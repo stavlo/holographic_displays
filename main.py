@@ -1,3 +1,5 @@
+import pickle
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,14 +9,15 @@ from torchvision.transforms import ToTensor
 import cv2
 from PIL import Image
 import optics
+import visualization
 import matplotlib.pyplot as plt
 import argparse
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 parser = argparse.ArgumentParser(description='holografic_slm')
-parser.add_argument('--epochs', default=300, type=int)
+parser.add_argument('--epochs', default=20, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
-parser.add_argument('--optimizer', default="adam", type=str, help='adam')
+parser.add_argument('--optimizer', default="adam", type=str)
 parser.add_argument('--lr', default=1e-4, type=float)
 
 
@@ -169,9 +172,13 @@ def main():
     # Training loop
     num_epochs = args.epochs
     best_val_loss = float('inf')
+    train_loss_list = []
+    val_loss_list = []
     for epoch in range(num_epochs):
         train_loss = train(model, train_loader, criterion, optimizer)
+        train_loss_list.append(train_loss)
         val_loss = validate(model, val_loader, criterion)
+        val_loss_list.append(val_loss)
 
         print(f"Epoch [{epoch + 1}/{num_epochs}]")
         print(f"Train Loss: {train_loss:.4f}")
@@ -179,12 +186,18 @@ def main():
 
         # Save the model if it has the best validation loss so far
         if val_loss < best_val_loss:
-            torch.save(model.state_dict(), "best_model.pt")
+            torch.save(model.state_dict(), "results/best_model.pt")
             best_val_loss = val_loss
             print("Saved the model with the best validation loss.")
 
     # Load the best model for testing
-    model.load_state_dict(torch.load("best_model.pt"))
+    model.load_state_dict(torch.load("results/best_model.pt"))
+    data = {'Train loss': train_loss_list, 'Val loss': val_loss_list}
+    with open(f'./results/loss.pickle', 'wb') as file:
+        # Dump the data into the pickle file
+        pickle.dump(data, file)
+    visualization.loss_graph(f'./results/')
+
 
     # Evaluate the model on the test set
     test_loss = test(model, test_loader, criterion)
