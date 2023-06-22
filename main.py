@@ -16,10 +16,10 @@ import argparse
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 parser = argparse.ArgumentParser(description='holografic_slm')
-parser.add_argument('--epochs', default=20, type=int)
+parser.add_argument('--epochs', default=200, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
-parser.add_argument('--lr', default=1e-4, type=float)
+parser.add_argument('--lr', default=5e-3, type=float)
 parser.add_argument('--z', default=0.1, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 
@@ -45,6 +45,10 @@ class CNN(nn.Module):
         self.conv1 = nn.Conv2d(3, 3, kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(3, 3, kernel_size=3, stride=1, padding=1)
         self.relu = nn.ReLU()
+
+        # Xavier initialization
+        nn.init.xavier_uniform_(self.conv1.weight)
+        nn.init.xavier_uniform_(self.conv2.weight)
 
     def forward(self, x):
         x = self.relu(self.conv1(x))
@@ -119,7 +123,9 @@ def test(model, test_loader, criterion, args):
             cpx_slm = torch.complex(real, img)
             cpx_out = optics.propogation(cpx_slm, args.z, args.wave_length, inf=True)
             new_img = torch.real(cpx_out) ** 2 + torch.imag(cpx_out) ** 2
-            cv2.imwrite('./results/reproduce_img.jpg', new_img.cpu().numpy())
+
+
+            cv2.imwrite('./results/reproduce_img.png', new_img.cpu().numpy())
 
             loss = criterion(new_img, targets)
 
