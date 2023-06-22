@@ -1,5 +1,6 @@
 import pickle
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -19,7 +20,8 @@ parser.add_argument('--epochs', default=20, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
 parser.add_argument('--lr', default=1e-4, type=float)
-
+parser.add_argument('--z', default=0.1, type=float, help='[m]')
+parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 
 class ImageDataset(Dataset):
     def __init__(self, image_path):
@@ -51,21 +53,22 @@ class CNN(nn.Module):
 
 
 # Train the model
-def train(model, train_loader, criterion, optimizer):
+def train(model, train_loader, criterion, optimizer, args):
     model.train()
     train_loss = 0.0
 
     for batch_idx, images in enumerate(train_loader):
         images = images.to(device)
         targets = images
-        inputs = torch.fft.fft2(images)
-        dpe_in = optics.dpe(inputs)
-        slm = model(dpe_in)
-        phs = torch.angle(slm)
-        outputs = torch.fft.fft2(phs)
-        img = torch.abs(outputs)
+        cpx_slm = optics.propogation(images, args.z, args.wave_length, inf=True)
+        dpe_in = optics.dpe(cpx_slm)
+        phs = model(dpe_in)
+        real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
+        cpx_slm = torch.complex(real, img)
+        cpx_out = optics.propogation(cpx_slm, args.z, args.wave_length, inf=True)
+        new_img = torch.real(cpx_out)**2 + torch.imag(cpx_out)**2
 
-        loss = criterion(img, targets)
+        loss = criterion(new_img, targets)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -77,7 +80,7 @@ def train(model, train_loader, criterion, optimizer):
 
 
 # Validate the model
-def validate(model, val_loader, criterion):
+def validate(model, val_loader, criterion, args):
     model.eval()
     val_loss = 0.0
 
@@ -85,13 +88,14 @@ def validate(model, val_loader, criterion):
         for batch_idx, images in enumerate(val_loader):
             images = images.to(device)
             targets = images
-            inputs = torch.fft.fft2(images)
-            dpe_in = optics.dpe(inputs)
-            slm = model(dpe_in)
-            phs = torch.angle(slm)
-            outputs = torch.fft.fft2(phs)
-            img = torch.abs(outputs)
-            loss = criterion(img, targets)
+            cpx_slm = optics.propogation(images, args.z, args.wave_length, inf=True)
+            dpe_in = optics.dpe(cpx_slm)
+            phs = model(dpe_in)
+            real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
+            cpx_slm = torch.complex(real, img)
+            cpx_out = optics.propogation(cpx_slm, args.z, args.wave_length, inf=True)
+            new_img = torch.real(cpx_out) ** 2 + torch.imag(cpx_out) ** 2
+            loss = criterion(new_img, targets)
 
             val_loss += loss.item()
 
@@ -100,7 +104,7 @@ def validate(model, val_loader, criterion):
 
 
 # Test the model
-def test(model, test_loader, criterion):
+def test(model, test_loader, criterion, args):
     model.eval()
     test_loss = 0.0
 
@@ -108,13 +112,16 @@ def test(model, test_loader, criterion):
         for batch_idx, images in enumerate(test_loader):
             images = images.to(device)
             targets = images
-            inputs = torch.fft.fft2(images)
-            dpe_in = optics.dpe(inputs)
-            slm = model(dpe_in)
-            phs = torch.angle(slm)
-            outputs = torch.fft.fft2(phs)
-            img = torch.abs(outputs)
-            loss = criterion(img, targets)
+            cpx_slm = optics.propogation(images, args.z, args.wave_length, inf=True)
+            dpe_in = optics.dpe(cpx_slm)
+            phs = model(dpe_in)
+            real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
+            cpx_slm = torch.complex(real, img)
+            cpx_out = optics.propogation(cpx_slm, args.z, args.wave_length, inf=True)
+            new_img = torch.real(cpx_out) ** 2 + torch.imag(cpx_out) ** 2
+            cv2.imwrite('./results/reproduce_img.jpg', new_img.cpu().numpy())
+
+            loss = criterion(new_img, targets)
 
             test_loss += loss.item()
 
@@ -161,7 +168,6 @@ def prep_data(args):
 def main():
     # Set random seeds for reproducibility
     args = parser.parse_args()
-
     train_loader, val_loader, test_loader = prep_data(args)
 
     # Create an instance of the CNN model
@@ -175,9 +181,9 @@ def main():
     train_loss_list = []
     val_loss_list = []
     for epoch in range(num_epochs):
-        train_loss = train(model, train_loader, criterion, optimizer)
+        train_loss = train(model, train_loader, criterion, optimizer, args)
         train_loss_list.append(train_loss)
-        val_loss = validate(model, val_loader, criterion)
+        val_loss = validate(model, val_loader, criterion, args)
         val_loss_list.append(val_loss)
 
         print(f"Epoch [{epoch + 1}/{num_epochs}]")
@@ -200,7 +206,7 @@ def main():
 
 
     # Evaluate the model on the test set
-    test_loss = test(model, test_loader, criterion)
+    test_loss = test(model, test_loader, criterion, args)
     print(f"Test Loss: {test_loss:.4f}")
 
 
