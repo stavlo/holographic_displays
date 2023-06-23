@@ -20,7 +20,7 @@ def loss_graph(file_path):
     plt.title('Loss')
     plt.grid()
     plt.legend()
-    plt.show(block=False)
+    plt.show(block=True)
     plt.savefig(f'{file_path}/loss_graph.png')
 
 

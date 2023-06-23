@@ -1,5 +1,4 @@
 import pickle
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -16,12 +15,13 @@ import argparse
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 parser = argparse.ArgumentParser(description='holografic_slm')
-parser.add_argument('--epochs', default=200, type=int)
+parser.add_argument('--epochs', default=300, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
 parser.add_argument('--lr', default=5e-3, type=float)
 parser.add_argument('--z', default=0.1, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
+parser.add_argument('--check_prop', default=False, type=bool)
 
 class ImageDataset(Dataset):
     def __init__(self, image_path):
@@ -46,9 +46,9 @@ class CNN(nn.Module):
         self.conv2 = nn.Conv2d(3, 3, kernel_size=3, stride=1, padding=1)
         self.relu = nn.ReLU()
 
-        # Xavier initialization
-        nn.init.xavier_uniform_(self.conv1.weight)
-        nn.init.xavier_uniform_(self.conv2.weight)
+        # Initialize weights as identity matrix
+        self.conv1.weight.data.copy_(torch.Tensor([[0.1,0.1,0.1], [0.1,1,0.1], [0.1,0.1,0.1]]).view(3, 3, 1, 1))
+        self.conv1.weight.data.copy_(torch.Tensor([[0.1,0.1,0.1], [0.1,1,0.1], [0.1,0.1,0.1]]).view(3, 3, 1, 1))
 
     def forward(self, x):
         x = self.relu(self.conv1(x))
@@ -63,16 +63,9 @@ def train(model, train_loader, criterion, optimizer, args):
 
     for batch_idx, images in enumerate(train_loader):
         images = images.to(device)
-        targets = images
-        cpx_slm = optics.propogation(images, args.z, args.wave_length, inf=True)
-        dpe_in = optics.dpe(cpx_slm)
-        phs = model(dpe_in)
-        real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
-        cpx_slm = torch.complex(real, img)
-        cpx_out = optics.propogation(cpx_slm, args.z, args.wave_length, inf=True)
-        new_img = torch.real(cpx_out)**2 + torch.imag(cpx_out)**2
+        new_img = run_setup(images, args, model)
 
-        loss = criterion(new_img, targets)
+        loss = criterion(new_img, images)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -91,15 +84,9 @@ def validate(model, val_loader, criterion, args):
     with torch.no_grad():
         for batch_idx, images in enumerate(val_loader):
             images = images.to(device)
-            targets = images
-            cpx_slm = optics.propogation(images, args.z, args.wave_length, inf=True)
-            dpe_in = optics.dpe(cpx_slm)
-            phs = model(dpe_in)
-            real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
-            cpx_slm = torch.complex(real, img)
-            cpx_out = optics.propogation(cpx_slm, args.z, args.wave_length, inf=True)
-            new_img = torch.real(cpx_out) ** 2 + torch.imag(cpx_out) ** 2
-            loss = criterion(new_img, targets)
+            new_img = run_setup(images, args, model)
+
+            loss = criterion(new_img, images)
 
             val_loss += loss.item()
 
@@ -115,25 +102,50 @@ def test(model, test_loader, criterion, args):
     with torch.no_grad():
         for batch_idx, images in enumerate(test_loader):
             images = images.to(device)
-            targets = images
-            cpx_slm = optics.propogation(images, args.z, args.wave_length, inf=True)
-            dpe_in = optics.dpe(cpx_slm)
-            phs = model(dpe_in)
-            real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
-            cpx_slm = torch.complex(real, img)
-            cpx_out = optics.propogation(cpx_slm, args.z, args.wave_length, inf=True)
-            new_img = torch.real(cpx_out) ** 2 + torch.imag(cpx_out) ** 2
+            new_img = run_setup(images, args, model)
 
-
-            cv2.imwrite('./results/reproduce_img.png', new_img.cpu().numpy())
-
-            loss = criterion(new_img, targets)
+            plt.imshow(np.clip((new_img.cpu().numpy()[0]).transpose(1, 2, 0), 0, 255))
+            plt.show(block=True)
+            reproduce_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 255).astype(np.uint8)
+            cv2.imwrite('./results/reproduce_img.png', (cv2.cvtColor(reproduce_img, cv2.COLOR_BGR2RGB)))
+            loss = criterion(new_img, images)
 
             test_loss += loss.item()
 
     avg_loss = test_loss / len(test_loader)
     return avg_loss
 
+
+def check_prop(test_loader, args):
+    with torch.no_grad():
+        for batch_idx, images in enumerate(test_loader):
+            images = images.to(device)
+            real_s, img_s = torch.real(images), torch.zeros_like(images)
+            cpx_start = torch.complex(real_s, img_s)
+            cpx_inf = optics.propogation(cpx_start, args.z, args.wave_length, forward=False, inf=True)
+            dpe_in, amp_max = optics.dpe(cpx_inf)
+            real, img = optics.polar_to_rect(torch.ones_like(dpe_in), dpe_in)
+            cpx_slm = torch.complex(real, img)
+            cpx_recon = optics.propogation(cpx_slm, args.z, args.wave_length, forward=True, inf=True)
+            new_img = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
+
+            plt.imshow(np.clip((new_img.cpu().numpy()[0]).transpose(1, 2, 0), 0, 1))
+            plt.show(block=True)
+            reproduce_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0)*255, 0, 255).astype(np.uint8)
+            cv2.imwrite('./results/check_prop.png', (cv2.cvtColor(reproduce_img, cv2.COLOR_BGR2RGB)))
+
+
+def run_setup(images, args, model):
+    real_s, img_s = torch.real(images), torch.zeros_like(images)
+    cpx_start = torch.complex(real_s, img_s)
+    cpx_inf = optics.propogation(cpx_start, args.z, args.wave_length, forward=False, inf=True)
+    dpe_in, amp_max = optics.dpe(cpx_inf)
+    phs = model(dpe_in)
+    real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
+    cpx_slm = torch.complex(real, img)
+    cpx_recon = optics.propogation(cpx_slm, args.z, args.wave_length, forward=True, inf=True)
+    new_img = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
+    return new_img
 
 def prep_data(args):
     torch.manual_seed(42)
@@ -175,13 +187,16 @@ def main():
     # Set random seeds for reproducibility
     args = parser.parse_args()
     train_loader, val_loader, test_loader = prep_data(args)
-
+    if args.check_prop:
+        check_prop(test_loader, args)
+        return
     # Create an instance of the CNN model
     model = CNN().to(device)
     # Define the loss function and optimizer
     criterion = nn.L1Loss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     # Training loop
+
     num_epochs = args.epochs
     best_val_loss = float('inf')
     train_loss_list = []
