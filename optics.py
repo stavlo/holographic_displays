@@ -26,7 +26,7 @@ def dpe(cpx):
     amp_max = torch.max(amp) + 1e-6
     amp = amp / amp_max
     # center phase for each color channel
-    phs_zero_mean = phs - phs.mean(dim=(2, 3), keepdim=True)
+    phs_zero_mean = phs - phs.mean(dim=(-2, -1), keepdim=True)
     # compute two phase maps
     phs_offset = torch.acos(amp)
     phs_low = phs_zero_mean - phs_offset
@@ -39,7 +39,7 @@ def dpe(cpx):
 
     # Concatenating the sliced tensors along the channel dimension
     phs_only = torch.cat([phs_1_1, phs_1_2, phs_2_1, phs_2_2], dim=1)
-    phs_only = phs_only[:, [0, 3, 6, 9, 1, 4, 7, 10, 2, 5, 8, 11]]
+    # phs_only = phs_only[:, [0, 3, 6, 9, 1, 4, 7, 10, 2, 5, 8, 11]]
 
     # Move tensors to the same device (CPU or GPU)
     # Depth-to-Space operation
@@ -116,6 +116,8 @@ def roll_torch(tensor, shift, axis):
 
 
 def propogation(cpx_in, z, channel, forward=True, inf=True):
+    # do we need scale ???
+    scale = cpx_in.shape[-1]*cpx_in.shape[-2]
     if inf and forward:
         cpx = fftshift(torch.fft.ifftn(cpx_in, dim=(-2, -1), norm='ortho'))
     if inf and not forward:

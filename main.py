@@ -32,27 +32,51 @@ class ImageDataset(Dataset):
         return 1
 
     def __getitem__(self, index):
-        image = Image.open(self.image_path).convert('RGB')
+        # image = Image.open(self.image_path).convert('RGB')
+        image = Image.open(self.image_path)
         tensor_image = self.transform(image)
 
         return tensor_image
 
 
 # Define the CNN model
-class CNN(nn.Module):
+class CNN_DPE(nn.Module):
     def __init__(self):
         super(CNN, self).__init__()
         self.conv1 = nn.Conv2d(3, 3, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(3, 3, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(3, 3, kernel_size=5, stride=1, padding=2)
+        self.conv3 = nn.Conv2d(3, 3, kernel_size=7, stride=1, padding=3)
         self.relu = nn.ReLU()
 
-        # Initialize weights as identity matrix
-        self.conv1.weight.data.copy_(torch.Tensor([[0.1,0.1,0.1], [0.1,1,0.1], [0.1,0.1,0.1]]).view(3, 3, 1, 1))
-        self.conv1.weight.data.copy_(torch.Tensor([[0.1,0.1,0.1], [0.1,1,0.1], [0.1,0.1,0.1]]).view(3, 3, 1, 1))
+        # Xavier initialization
+        nn.init.xavier_uniform_(self.conv1.weight)
+        nn.init.xavier_uniform_(self.conv2.weight)
+        nn.init.xavier_uniform_(self.conv3.weight)
 
     def forward(self, x):
         x = self.relu(self.conv1(x))
         x = self.relu(self.conv2(x))
+        x = self.conv3(x)
+        return x
+
+# Define the CNN model
+class CNN(nn.Module):
+    def __init__(self):
+        super(CNN, self).__init__()
+        self.conv1 = nn.Conv2d(2, 2, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(2, 1, kernel_size=5, stride=1, padding=2)
+        self.conv3 = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
+        self.relu = nn.ReLU()
+
+        # Xavier initialization
+        nn.init.xavier_uniform_(self.conv1.weight)
+        nn.init.xavier_uniform_(self.conv2.weight)
+        nn.init.xavier_uniform_(self.conv3.weight)
+
+    def forward(self, x):
+        x = self.relu(self.conv1(x))
+        x = self.relu(self.conv2(x))
+        x = self.conv3(x)
         return x
 
 
@@ -104,10 +128,11 @@ def test(model, test_loader, criterion, args):
             images = images.to(device)
             new_img = run_setup(images, args, model)
 
-            plt.imshow(np.clip((new_img.cpu().numpy()[0]).transpose(1, 2, 0), 0, 255))
+            reproduce_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 1)
+            plt.imshow(reproduce_img, cmap='gray')
             plt.show(block=True)
-            reproduce_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 255).astype(np.uint8)
-            cv2.imwrite('./results/reproduce_img.png', (cv2.cvtColor(reproduce_img, cv2.COLOR_BGR2RGB)))
+            cv2.imwrite('./results/reproduce_img.png', reproduce_img)
+            # cv2.imwrite('./results/reproduce_img.png', (cv2.cvtColor(reproduce_img, cv2.COLOR_BGR2RGB)))
             loss = criterion(new_img, images)
 
             test_loss += loss.item()
@@ -123,27 +148,40 @@ def check_prop(test_loader, args):
             real_s, img_s = torch.real(images), torch.zeros_like(images)
             cpx_start = torch.complex(real_s, img_s)
             cpx_inf = optics.propogation(cpx_start, args.z, args.wave_length, forward=False, inf=True)
-            dpe_in, amp_max = optics.dpe(cpx_inf)
-            real, img = optics.polar_to_rect(torch.ones_like(dpe_in), dpe_in)
-            cpx_slm = torch.complex(real, img)
-            cpx_recon = optics.propogation(cpx_slm, args.z, args.wave_length, forward=True, inf=True)
+            # dpe_in, amp_max = optics.dpe(cpx_inf)
+            # real, img = optics.polar_to_rect(torch.ones_like(dpe_in) * (amp_max/2), dpe_in)
+            # real, img = optics.polar_to_rect(torch.ones_like(dpe_in), dpe_in)
+            # cpx_slm = torch.complex(real, img)
+            # cpx_recon = optics.propogation(cpx_slm, args.z, args.wave_length, forward=True, inf=True)
+            cpx_recon = optics.propogation(cpx_inf, args.z, args.wave_length, forward=True, inf=True)
             new_img = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
 
-            plt.imshow(np.clip((new_img.cpu().numpy()[0]).transpose(1, 2, 0), 0, 1))
+            recon_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 1)
+            plt.imshow(recon_img, cmap='gray')
             plt.show(block=True)
-            reproduce_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0)*255, 0, 255).astype(np.uint8)
-            cv2.imwrite('./results/check_prop.png', (cv2.cvtColor(reproduce_img, cv2.COLOR_BGR2RGB)))
+            cv2.imwrite('./results/check_prop_dpe.png', (cv2.cvtColor(recon_img*255, cv2.COLOR_BGR2RGB)))
 
 
 def run_setup(images, args, model):
     real_s, img_s = torch.real(images), torch.zeros_like(images)
     cpx_start = torch.complex(real_s, img_s)
     cpx_inf = optics.propogation(cpx_start, args.z, args.wave_length, forward=False, inf=True)
-    dpe_in, amp_max = optics.dpe(cpx_inf)
-    phs = model(dpe_in)
-    real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
+
+    # # DPE
+    # dpe_in, amp_max = optics.dpe(cpx_inf)
+    # phs = model(dpe_in)
+    # real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
+    # cpx_slm = torch.complex(real, img)
+    # cpx_recon = optics.propogation(cpx_slm, args.z, args.wave_length, forward=True, inf=True)
+
+    # without DPE
+    amp, phs = optics.rect_to_polar(torch.real(cpx_inf), torch.imag(cpx_inf))
+    cpx_in = torch.cat([amp, phs], dim=1)
+    phs = model(cpx_in)
+    real, img = optics.polar_to_rect(torch.ones_like(phs)*0.2, phs)
     cpx_slm = torch.complex(real, img)
     cpx_recon = optics.propogation(cpx_slm, args.z, args.wave_length, forward=True, inf=True)
+
     new_img = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
     return new_img
 
