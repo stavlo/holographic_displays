@@ -4,15 +4,17 @@ import math
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def np_circ_filter(batch, num_channels, res_h, res_w, filter_radius):
+def np_circ_filter(batch, num_channels, res_h, res_w, filter_radius=None):
     """create a circular low pass filter
     """
+    if filter_radius == None:
+        filter_radius = int(np.min([res_h, res_w]) / 2)
     y,x = np.meshgrid(np.linspace(-(res_w-1)/2, (res_w-1)/2, res_w), np.linspace(-(res_h-1)/2, (res_h-1)/2, res_h))
     mask = x**2+y**2 <= filter_radius**2
     np_filter = np.zeros((res_h, res_w))
     np_filter[mask] = 1.0
     np_filter = np.tile(np.reshape(np_filter, [1,1,res_h,res_w]), [batch, num_channels, 1, 1])
-    torch.Tensor(np_filter).to(device)
+    np_filter = torch.Tensor(np_filter).to(device)
     return np_filter
     # circ_filter = np_circ_filter(cpx.shape[0], cpx.shape[1], cpx.shape[2], cpx.shape[3], np.min([cpx.shape[2],cpx.shape[3]])/2)
     # cpx_phs = cpx_phs * torch.Tensor(circ_filter).to(device)
@@ -115,11 +117,51 @@ def roll_torch(tensor, shift, axis):
     return torch.cat([after, before], axis)
 
 
-def propogation(cpx_in, z, channel, forward=True, inf=True):
+def propogation(cpx_in, z, wave_length, forward=True):
     # do we need scale ???
     scale = cpx_in.shape[-1]*cpx_in.shape[-2]
-    if inf and forward:
-        cpx = fftshift(torch.fft.ifftn(cpx_in, dim=(-2, -1), norm='ortho'))
-    if inf and not forward:
-        cpx = torch.fft.fftn(ifftshift(cpx_in), dim=(-2, -1), norm='ortho')
+    # to image plane
+    if forward:
+        prop_phs = prop_mask(cpx_in, z, wave_length)
+        cpx = torch.fft.fftn(ifftshift(cpx_in), dim=(-2, -1), norm='ortho') * prop_phs
+        cpx = fftshift(torch.fft.ifftn(cpx, dim=(-2, -1), norm='ortho'))
+    # to source plane
+    if not forward:
+        prop_phs = prop_mask(cpx_in, -z, wave_length)
+        cpx = torch.fft.fftn(ifftshift(cpx_in), dim=(-2, -1), norm='ortho') * prop_phs
+        cpx = fftshift(torch.fft.ifftn(cpx, dim=(-2, -1), norm='ortho'))
     return cpx
+
+def prop_mask(cpx_in, z, wave_length):
+    # resolution of input field, should be: (num_images, num_channels, height, width, 2)
+    field_resolution = cpx_in.size()
+    # number of pixels
+    num_y, num_x = field_resolution[-2], field_resolution[-1]
+    # sampling interval size
+    feature_size = (6.4 * 1e-6, 6.4 * 1e-6)
+    dy, dx = feature_size
+    # size of the field
+    y, x = (dy * float(num_y), dx * float(num_x))
+    # frequency coordinates sampling
+    fy = np.linspace(-1 / (2 * dy) + 0.5 / (2 * y), 1 / (2 * dy) - 0.5 / (2 * y), num_y)
+    fx = np.linspace(-1 / (2 * dx) + 0.5 / (2 * x), 1 / (2 * dx) - 0.5 / (2 * x), num_x)
+    # momentum/reciprocal space
+    FX, FY = np.meshgrid(fx, fy)
+    # transfer function in numpy (omit distance)
+    HH = 2 * math.pi * np.sqrt(1 / wave_length**2 - (FX**2 + FY**2))
+    # create tensor & upload to device (GPU)
+    H_exp = torch.tensor(HH, dtype=torch.float32).to(cpx_in.device)
+    # reshape tensor and multiply
+    H_exp = torch.reshape(H_exp, (1, 1, *H_exp.size()))
+    # multiply by distance
+    H_exp = torch.mul(H_exp, z)
+    # band-limited ASM - Matsushima et al. (2009)
+    fy_max = 1 / np.sqrt((2 * z * (1 / y)) ** 2 + 1) / wave_length
+    fx_max = 1 / np.sqrt((2 * z * (1 / x)) ** 2 + 1) / wave_length
+    H_filter = torch.tensor(((np.abs(FX) < fx_max) & (np.abs(FY) < fy_max)).astype(np.uint8), dtype=torch.float32)
+    # get real/img components
+    H_real, H_imag = polar_to_rect(H_filter.to(cpx_in.device), H_exp)
+    H = torch.stack((H_real, H_imag), 4)
+    H = ifftshift(H)
+    H = torch.view_as_complex(H)
+    return H

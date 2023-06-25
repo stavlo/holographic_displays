@@ -18,10 +18,11 @@ parser = argparse.ArgumentParser(description='holografic_slm')
 parser.add_argument('--epochs', default=300, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
-parser.add_argument('--lr', default=5e-3, type=float)
+parser.add_argument('--lr', default=1e-3, type=float)
 parser.add_argument('--z', default=0.1, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 parser.add_argument('--check_prop', default=False, type=bool)
+parser.add_argument('--phase_model', default='identity', type=str, help='[identity, DPE, amp_phs]')
 
 class ImageDataset(Dataset):
     def __init__(self, image_path):
@@ -32,8 +33,9 @@ class ImageDataset(Dataset):
         return 1
 
     def __getitem__(self, index):
-        # image = Image.open(self.image_path).convert('RGB')
-        image = Image.open(self.image_path)
+        image = Image.open(self.image_path).convert('RGB')
+        # image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
+        # image = Image.open(self.image_path)
         tensor_image = self.transform(image)
 
         return tensor_image
@@ -42,10 +44,10 @@ class ImageDataset(Dataset):
 # Define the CNN model
 class CNN_DPE(nn.Module):
     def __init__(self):
-        super(CNN, self).__init__()
-        self.conv1 = nn.Conv2d(3, 3, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(3, 3, kernel_size=5, stride=1, padding=2)
-        self.conv3 = nn.Conv2d(3, 3, kernel_size=7, stride=1, padding=3)
+        super(CNN_DPE, self).__init__()
+        self.conv1 = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv3 = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
         self.relu = nn.ReLU()
 
         # Xavier initialization
@@ -130,6 +132,7 @@ def test(model, test_loader, criterion, args):
 
             reproduce_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 1)
             plt.imshow(reproduce_img, cmap='gray')
+            plt.title(args.phase_model)
             plt.show(block=True)
             cv2.imwrite('./results/reproduce_img.png', reproduce_img)
             # cv2.imwrite('./results/reproduce_img.png', (cv2.cvtColor(reproduce_img, cv2.COLOR_BGR2RGB)))
@@ -145,16 +148,19 @@ def check_prop(test_loader, args):
     with torch.no_grad():
         for batch_idx, images in enumerate(test_loader):
             images = images.to(device)
+            new_img = torch.zeros_like(images)
             real_s, img_s = torch.real(images), torch.zeros_like(images)
             cpx_start = torch.complex(real_s, img_s)
-            cpx_inf = optics.propogation(cpx_start, args.z, args.wave_length, forward=False, inf=True)
-            # dpe_in, amp_max = optics.dpe(cpx_inf)
-            # real, img = optics.polar_to_rect(torch.ones_like(dpe_in) * (amp_max/2), dpe_in)
-            # real, img = optics.polar_to_rect(torch.ones_like(dpe_in), dpe_in)
-            # cpx_slm = torch.complex(real, img)
-            # cpx_recon = optics.propogation(cpx_slm, args.z, args.wave_length, forward=True, inf=True)
-            cpx_recon = optics.propogation(cpx_inf, args.z, args.wave_length, forward=True, inf=True)
-            new_img = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
+            for i, c in enumerate(args.wave_length):
+                cpx_inf = optics.propogation(cpx_start[:,i,:,:].unsqueeze(1), args.z, c, forward=False)
+                dpe_in, amp_max = optics.dpe(cpx_inf)
+                real, img = optics.polar_to_rect(torch.ones_like(dpe_in) * (amp_max/2), dpe_in)
+                # real, img = optics.polar_to_rect(torch.ones_like(dpe_in), dpe_in)
+                cpx_slm = torch.complex(real, img)
+                # cpx_slm = optics.np_circ_filter(cpx_slm.shape[0],cpx_slm.shape[1], cpx_slm.shape[2], cpx_slm.shape[3])*cpx_slm
+                cpx_recon = optics.propogation(cpx_slm, args.z, c, forward=True)
+                # cpx_recon = optics.propogation(cpx_inf, args.z, c, forward=True)
+                new_img[:,i,:,:] = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
 
             recon_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 1)
             plt.imshow(recon_img, cmap='gray')
@@ -165,23 +171,28 @@ def check_prop(test_loader, args):
 def run_setup(images, args, model):
     real_s, img_s = torch.real(images), torch.zeros_like(images)
     cpx_start = torch.complex(real_s, img_s)
-    cpx_inf = optics.propogation(cpx_start, args.z, args.wave_length, forward=False, inf=True)
+    cpx_inf = optics.propogation(cpx_start, args.z, args.wave_length, forward=False)
 
-    # # DPE
-    # dpe_in, amp_max = optics.dpe(cpx_inf)
-    # phs = model(dpe_in)
-    # real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
-    # cpx_slm = torch.complex(real, img)
-    # cpx_recon = optics.propogation(cpx_slm, args.z, args.wave_length, forward=True, inf=True)
+    # DPE
+    if args.phase_model == 'DPE':
+        dpe_in, amp_max = optics.dpe(cpx_inf)
+        phs = model(dpe_in)
+        real, img = optics.polar_to_rect(torch.ones_like(phs)*0.2, phs)
 
-    # without DPE
-    amp, phs = optics.rect_to_polar(torch.real(cpx_inf), torch.imag(cpx_inf))
-    cpx_in = torch.cat([amp, phs], dim=1)
-    phs = model(cpx_in)
-    real, img = optics.polar_to_rect(torch.ones_like(phs)*0.2, phs)
+    if args.phase_model == 'amp+phs':
+        # without DPE use amp and phase information
+        amp, phs = optics.rect_to_polar(torch.real(cpx_inf), torch.imag(cpx_inf))
+        cpx_in = torch.cat([amp, phs], dim=1)
+        phs = model(cpx_in)
+        real, img = optics.polar_to_rect(torch.ones_like(phs)*0.2, phs)
+
+    if args.phase_model == 'identity':
+        phs_in = torch.ones_like(torch.angle(cpx_inf))*0.01
+        phs = model(phs_in)
+        real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
+
     cpx_slm = torch.complex(real, img)
-    cpx_recon = optics.propogation(cpx_slm, args.z, args.wave_length, forward=True, inf=True)
-
+    cpx_recon = optics.propogation(cpx_slm, args.z, args.wave_length, forward=True)
     new_img = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
     return new_img
 
@@ -192,7 +203,7 @@ def prep_data(args):
     # cifar_dataset = CIFAR10(root="./datasets", train=True, download=True, transform=transform)
 
     # Specify the path to the image file
-    image_path = "./datasets/img.png"
+    image_path = "./datasets/1.png"
     # Create an instance of the ImageDataset
     dataset = ImageDataset(image_path)
     # Access the image data from the dataset
@@ -229,8 +240,11 @@ def main():
         check_prop(test_loader, args)
         return
     # Create an instance of the CNN model
-    model = CNN().to(device)
-    # Define the loss function and optimizer
+    if args.phase_model == 'amp+phs':
+        model = CNN().to(device)
+    else:
+        model = CNN_DPE().to(device)
+# Define the loss function and optimizer
     criterion = nn.L1Loss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     # Training loop
