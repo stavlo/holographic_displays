@@ -119,17 +119,17 @@ def roll_torch(tensor, shift, axis):
 
 def propogation(cpx_in, z, wave_length, forward=True):
     # do we need scale ???
-    scale = cpx_in.shape[-1]*cpx_in.shape[-2]
+    scale = np.sqrt(2*np.pi) # cpx_in.shape[-1]*cpx_in.shape[-2]
     # to image plane
     if forward:
         prop_phs = prop_mask(cpx_in, z, wave_length)
         cpx = torch.fft.fftn(ifftshift(cpx_in), dim=(-2, -1), norm='ortho') * prop_phs
-        cpx = fftshift(torch.fft.ifftn(cpx, dim=(-2, -1), norm='ortho'))
+        cpx = fftshift(torch.fft.ifftn(cpx, dim=(-2, -1), norm='ortho')) * scale
     # to source plane
     if not forward:
         prop_phs = prop_mask(cpx_in, -z, wave_length)
-        cpx = torch.fft.fftn(ifftshift(cpx_in), dim=(-2, -1), norm='ortho') * prop_phs
-        cpx = fftshift(torch.fft.ifftn(cpx, dim=(-2, -1), norm='ortho'))
+        cpx = torch.fft.ifftn(fftshift(cpx_in), dim=(-2, -1), norm='ortho') * prop_phs
+        cpx = ifftshift(torch.fft.fftn(cpx, dim=(-2, -1), norm='ortho'))
     return cpx
 
 def prop_mask(cpx_in, z, wave_length):

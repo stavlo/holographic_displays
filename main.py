@@ -12,13 +12,14 @@ import optics
 import visualization
 import matplotlib.pyplot as plt
 import argparse
+from torchmetrics import StructuralSimilarityIndexMeasure
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 parser = argparse.ArgumentParser(description='holografic_slm')
 parser.add_argument('--epochs', default=300, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
-parser.add_argument('--lr', default=1e-3, type=float)
+parser.add_argument('--lr', default=1e-2, type=float)
 parser.add_argument('--z', default=0.1, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 parser.add_argument('--check_prop', default=False, type=bool)
@@ -162,38 +163,45 @@ def check_prop(test_loader, args):
                 # cpx_recon = optics.propogation(cpx_inf, args.z, c, forward=True)
                 new_img[:,i,:,:] = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
 
+            ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+            print(f"SSIM: {ssim(images, new_img)}")
+            criterion = nn.L1Loss()
+            print(f"L1: {criterion(images, new_img)}")
+
             recon_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 1)
             plt.imshow(recon_img, cmap='gray')
+            plt.title("DPE with no network")
             plt.show(block=True)
             cv2.imwrite('./results/check_prop_dpe.png', (cv2.cvtColor(recon_img*255, cv2.COLOR_BGR2RGB)))
 
 
 def run_setup(images, args, model):
     real_s, img_s = torch.real(images), torch.zeros_like(images)
+    new_img = torch.zeros_like(images)
     cpx_start = torch.complex(real_s, img_s)
-    cpx_inf = optics.propogation(cpx_start, args.z, args.wave_length, forward=False)
+    for i, c in enumerate(args.wave_length):
+        cpx_inf = optics.propogation(cpx_start[:, i, :, :].unsqueeze(1), args.z, c, forward=False)
 
-    # DPE
-    if args.phase_model == 'DPE':
-        dpe_in, amp_max = optics.dpe(cpx_inf)
-        phs = model(dpe_in)
-        real, img = optics.polar_to_rect(torch.ones_like(phs)*0.2, phs)
+        if args.phase_model == 'DPE':
+            dpe_in, amp_max = optics.dpe(cpx_inf)
+            phs = model(dpe_in)
+            real, img = optics.polar_to_rect(torch.ones_like(dpe_in) * (amp_max / 2), phs)
 
-    if args.phase_model == 'amp+phs':
-        # without DPE use amp and phase information
-        amp, phs = optics.rect_to_polar(torch.real(cpx_inf), torch.imag(cpx_inf))
-        cpx_in = torch.cat([amp, phs], dim=1)
-        phs = model(cpx_in)
-        real, img = optics.polar_to_rect(torch.ones_like(phs)*0.2, phs)
+        if args.phase_model == 'amp+phs':
+            # without DPE use amp and phase information
+            amp, phs = optics.rect_to_polar(torch.real(cpx_inf), torch.imag(cpx_inf))
+            cpx_in = torch.cat([amp, phs], dim=1)
+            phs = model(cpx_in)
+            real, img = optics.polar_to_rect(torch.ones_like(phs) * 0.2, phs)
 
-    if args.phase_model == 'identity':
-        phs_in = torch.ones_like(torch.angle(cpx_inf))*0.01
-        phs = model(phs_in)
-        real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
+        if args.phase_model == 'identity':
+            phs_in = torch.ones_like(torch.angle(cpx_inf)) * 0.01
+            phs = model(phs_in)
+            real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
 
-    cpx_slm = torch.complex(real, img)
-    cpx_recon = optics.propogation(cpx_slm, args.z, args.wave_length, forward=True)
-    new_img = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
+        cpx_slm = torch.complex(real, img)
+        cpx_recon = optics.propogation(cpx_slm, args.z, c, forward=True)
+        new_img[:, i, :, :] = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
     return new_img
 
 def prep_data(args):
@@ -242,8 +250,11 @@ def main():
     # Create an instance of the CNN model
     if args.phase_model == 'amp+phs':
         model = CNN().to(device)
-    else:
+    elif args.phase_model == 'DPE' or args.phase_model == 'identity':
         model = CNN_DPE().to(device)
+    else:
+        print("NO PHASE MODEL WAS CHOSEN")
+        return
 # Define the loss function and optimizer
     criterion = nn.L1Loss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
