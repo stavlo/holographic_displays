@@ -4,11 +4,12 @@ import math
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+
 def np_circ_filter(batch, num_channels, res_h, res_w, filter_radius=None):
     """create a circular low pass filter
     """
     if filter_radius == None:
-        filter_radius = int(np.min([res_h, res_w]) / 2)
+        filter_radius = int(np.min([res_h, res_w]) / 4)
     y,x = np.meshgrid(np.linspace(-(res_w-1)/2, (res_w-1)/2, res_w), np.linspace(-(res_h-1)/2, (res_h-1)/2, res_h))
     mask = x**2+y**2 <= filter_radius**2
     np_filter = np.zeros((res_h, res_w))
@@ -119,12 +120,12 @@ def roll_torch(tensor, shift, axis):
 
 def propogation(cpx_in, z, wave_length, forward=True):
     # do we need scale ???
-    scale = np.sqrt(2*np.pi) # cpx_in.shape[-1]*cpx_in.shape[-2]
+    # scale = np.sqrt(2*np.pi) # cpx_in.shape[-1]*cpx_in.shape[-2]
     # to image plane
     if forward:
         prop_phs = prop_mask(cpx_in, z, wave_length)
         cpx = torch.fft.fftn(ifftshift(cpx_in), dim=(-2, -1), norm='ortho') * prop_phs
-        cpx = fftshift(torch.fft.ifftn(cpx, dim=(-2, -1), norm='ortho')) * scale
+        cpx = fftshift(torch.fft.ifftn(cpx, dim=(-2, -1), norm='ortho'))
     # to source plane
     if not forward:
         prop_phs = prop_mask(cpx_in, -z, wave_length)
@@ -165,3 +166,15 @@ def prop_mask(cpx_in, z, wave_length):
     H = ifftshift(H)
     H = torch.view_as_complex(H)
     return H
+
+
+def norm_img_energy(img1, original):
+    energy1 = torch.sum(torch.sqrt(img1 ** 2))
+    orignal_e = torch.sum(torch.sqrt(original ** 2))
+    ratio = orignal_e / energy1
+    norm_img = img1 * ratio
+    return norm_img
+
+def scale_img(img1, original):
+    s = (img1 * original).mean() / (img1 ** 2).mean()  # scale minimizing MSE btw recon and    return scale
+    return s * img1

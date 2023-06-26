@@ -10,6 +10,7 @@ import cv2
 from PIL import Image
 import optics
 import visualization
+import Loss_function
 import matplotlib.pyplot as plt
 import argparse
 from torchmetrics import StructuralSimilarityIndexMeasure
@@ -19,7 +20,7 @@ parser = argparse.ArgumentParser(description='holografic_slm')
 parser.add_argument('--epochs', default=300, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
-parser.add_argument('--lr', default=1e-2, type=float)
+parser.add_argument('--lr', default=1e-3, type=float)
 parser.add_argument('--z', default=0.1, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 parser.add_argument('--check_prop', default=False, type=bool)
@@ -49,18 +50,26 @@ class CNN_DPE(nn.Module):
         self.conv1 = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
         self.conv3 = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
-        self.relu = nn.ReLU()
+        self.LeakyReLU = nn.LeakyReLU()
 
-        # Xavier initialization
-        nn.init.xavier_uniform_(self.conv1.weight)
-        nn.init.xavier_uniform_(self.conv2.weight)
-        nn.init.xavier_uniform_(self.conv3.weight)
+        # Initialize the convolutional layers with identity
+        self.conv1.weight.data.copy_(Loss_function.conv_identity_filter(3))
+        self.conv1.bias.data.fill_(0)
+        self.conv2.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv2.bias.data.fill_(0)
+        self.conv3.weight.data.copy_(Loss_function.conv_identity_filter(7))
+        self.conv3.bias.data.fill_(0)
+
+        # # Xavier initialization
+        # nn.init.xavier_uniform_(self.conv1.weight)
+        # nn.init.xavier_uniform_(self.conv2.weight)
+        # nn.init.xavier_uniform_(self.conv3.weight)
 
     def forward(self, x):
-        x = self.relu(self.conv1(x))
-        x = self.relu(self.conv2(x))
-        x = self.conv3(x)
-        return x
+        x1 = self.LeakyReLU(self.conv1(x))
+        x2 = self.LeakyReLU(self.conv2(x1))
+        x3 = self.conv3(x2)
+        return x + x3
 
 # Define the CNN model
 class CNN(nn.Module):
@@ -92,7 +101,12 @@ def train(model, train_loader, criterion, optimizer, args):
         images = images.to(device)
         new_img = run_setup(images, args, model)
 
-        loss = criterion(new_img, images)
+        loss = 0
+        for c in range(len(args.wave_length)):
+            loss += criterion(new_img[:,c,:,:], images[:,c,:,:])
+        # ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+        # loss = criterion(new_img, images) + 1 - ssim(new_img, images)
+        # loss = 1 - ssim(new_img, images)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -113,7 +127,12 @@ def validate(model, val_loader, criterion, args):
             images = images.to(device)
             new_img = run_setup(images, args, model)
 
-            loss = criterion(new_img, images)
+            loss = 0
+            for c in range(len(args.wave_length)):
+                loss += criterion(new_img[:, c, :, :], images[:, c, :, :])
+            # ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+            # loss = criterion(new_img, images) + 1 - ssim(new_img, images)
+            # loss = 1 - ssim(new_img, images)
 
             val_loss += loss.item()
 
@@ -150,25 +169,31 @@ def check_prop(test_loader, args):
         for batch_idx, images in enumerate(test_loader):
             images = images.to(device)
             new_img = torch.zeros_like(images)
+            norm_img = torch.zeros_like(images)
             real_s, img_s = torch.real(images), torch.zeros_like(images)
             cpx_start = torch.complex(real_s, img_s)
             for i, c in enumerate(args.wave_length):
                 cpx_inf = optics.propogation(cpx_start[:,i,:,:].unsqueeze(1), args.z, c, forward=False)
                 dpe_in, amp_max = optics.dpe(cpx_inf)
                 real, img = optics.polar_to_rect(torch.ones_like(dpe_in) * (amp_max/2), dpe_in)
-                # real, img = optics.polar_to_rect(torch.ones_like(dpe_in), dpe_in)
                 cpx_slm = torch.complex(real, img)
-                # cpx_slm = optics.np_circ_filter(cpx_slm.shape[0],cpx_slm.shape[1], cpx_slm.shape[2], cpx_slm.shape[3])*cpx_slm
-                cpx_recon = optics.propogation(cpx_slm, args.z, c, forward=True)
+
+                f_cpx = optics.fftshift(torch.fft.fftn(cpx_slm, dim=(-2, -1), norm='ortho'))
+                f_cpx_filter = optics.np_circ_filter(cpx_slm.shape[0],cpx_slm.shape[1], cpx_slm.shape[2], cpx_slm.shape[3])*f_cpx
+                cpx_slm_filter = torch.fft.ifftn(optics.ifftshift(f_cpx_filter), dim=(-2, -1), norm='ortho')
+
+                cpx_recon = optics.propogation(cpx_slm_filter, args.z, c, forward=True)
                 # cpx_recon = optics.propogation(cpx_inf, args.z, c, forward=True)
                 new_img[:,i,:,:] = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
+                # norm_img[:,i,:,:] = optics.norm_img_energy(new_img[:,i,:,:], images[:,i,:,:])
+                norm_img[:,i,:,:] = optics.scale_img(new_img[:,i,:,:], images[:,i,:,:])
 
             ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-            print(f"SSIM: {ssim(images, new_img)}")
+            print(f"SSIM: {ssim(norm_img, images)}")
             criterion = nn.L1Loss()
-            print(f"L1: {criterion(images, new_img)}")
+            print(f"L1: {criterion(norm_img, images)}")
 
-            recon_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 1)
+            recon_img = np.clip(norm_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 1)
             plt.imshow(recon_img, cmap='gray')
             plt.title("DPE with no network")
             plt.show(block=True)
@@ -199,8 +224,13 @@ def run_setup(images, args, model):
             phs = model(phs_in)
             real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
 
+
         cpx_slm = torch.complex(real, img)
-        cpx_recon = optics.propogation(cpx_slm, args.z, c, forward=True)
+        f_cpx = optics.fftshift(torch.fft.fftn(cpx_slm, dim=(-2, -1), norm='ortho'))
+        f_cpx_filter = optics.np_circ_filter(cpx_slm.shape[0], cpx_slm.shape[1], cpx_slm.shape[2],
+                                             cpx_slm.shape[3]) * f_cpx
+        cpx_slm_filter = torch.fft.ifftn(optics.ifftshift(f_cpx_filter), dim=(-2, -1), norm='ortho')
+        cpx_recon = optics.propogation(cpx_slm_filter, args.z, c, forward=True)
         new_img[:, i, :, :] = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
     return new_img
 
