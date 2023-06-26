@@ -17,13 +17,14 @@ from torchmetrics import StructuralSimilarityIndexMeasure
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 parser = argparse.ArgumentParser(description='holografic_slm')
-parser.add_argument('--epochs', default=300, type=int)
+parser.add_argument('--epochs', default=100, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
-parser.add_argument('--lr', default=1e-3, type=float)
+parser.add_argument('--lr', default=1e-4, type=float)
 parser.add_argument('--z', default=0.1, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 parser.add_argument('--check_prop', default=False, type=bool)
+parser.add_argument('--eval', default=False, type=bool)
 parser.add_argument('--phase_model', default='identity', type=str, help='[identity, DPE, amp_phs]')
 
 class ImageDataset(Dataset):
@@ -68,8 +69,11 @@ class CNN_DPE(nn.Module):
     def forward(self, x):
         x1 = self.LeakyReLU(self.conv1(x))
         x2 = self.LeakyReLU(self.conv2(x1))
-        x3 = self.conv3(x2)
-        return x + x3
+        x3 = self.LeakyReLU(self.conv3(x2))
+        # x1 = self.conv1(x)
+        # x2 = self.conv2(x1)
+        # x3 = self.conv3(x2)
+        return x3
 
 # Define the CNN model
 class CNN(nn.Module):
@@ -104,9 +108,12 @@ def train(model, train_loader, criterion, optimizer, args):
         loss = 0
         for c in range(len(args.wave_length)):
             loss += criterion(new_img[:,c,:,:], images[:,c,:,:])
-        # ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-        # loss = criterion(new_img, images) + 1 - ssim(new_img, images)
+            # ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+            # loss = criterion(new_img[:, c, :, :], images[:, c, :, :]) + \
+            #        1 - ssim(new_img[:, c, :, :].unsqueeze(1), images[:, c, :, :].unsqueeze(1))
         # loss = 1 - ssim(new_img, images)
+        # loss = criterion(new_img, images)
+        # loss += Loss_function.laplacian_loss(new_img,images, criterion)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -130,9 +137,12 @@ def validate(model, val_loader, criterion, args):
             loss = 0
             for c in range(len(args.wave_length)):
                 loss += criterion(new_img[:, c, :, :], images[:, c, :, :])
-            # ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-            # loss = criterion(new_img, images) + 1 - ssim(new_img, images)
+                # ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
+                # loss = criterion(new_img[:, c, :, :], images[:, c, :, :]) + \
+                #        1 - ssim(new_img[:, c, :, :].unsqueeze(1),images[:, c, :, :].unsqueeze(1))
             # loss = 1 - ssim(new_img, images)
+            # loss = criterion(new_img, images    )
+            # loss += Loss_function.laplacian_loss(new_img, images, criterion)
 
             val_loss += loss.item()
 
@@ -227,11 +237,11 @@ def run_setup(images, args, model):
 
         cpx_slm = torch.complex(real, img)
         f_cpx = optics.fftshift(torch.fft.fftn(cpx_slm, dim=(-2, -1), norm='ortho'))
-        f_cpx_filter = optics.np_circ_filter(cpx_slm.shape[0], cpx_slm.shape[1], cpx_slm.shape[2],
-                                             cpx_slm.shape[3]) * f_cpx
+        f_cpx_filter = optics.np_circ_filter(cpx_slm.shape[0], cpx_slm.shape[1], cpx_slm.shape[2], cpx_slm.shape[3]) * f_cpx
         cpx_slm_filter = torch.fft.ifftn(optics.ifftshift(f_cpx_filter), dim=(-2, -1), norm='ortho')
         cpx_recon = optics.propogation(cpx_slm_filter, args.z, c, forward=True)
-        new_img[:, i, :, :] = torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2
+        new_img[:, i, :, :] = optics.scale_img(torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2, images[:,i,:,:])
+        # norm_img[:, i, :, :] = optics.scale_img(new_img[:, i, :, :], images[:, i, :, :])
     return new_img
 
 def prep_data(args):
@@ -285,38 +295,38 @@ def main():
     else:
         print("NO PHASE MODEL WAS CHOSEN")
         return
-# Define the loss function and optimizer
+    # Define the loss function and optimizer
     criterion = nn.L1Loss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     # Training loop
+    if not args.eval:
+        num_epochs = args.epochs
+        best_val_loss = float('inf')
+        train_loss_list = []
+        val_loss_list = []
+        for epoch in range(num_epochs):
+            train_loss = train(model, train_loader, criterion, optimizer, args)
+            train_loss_list.append(train_loss)
+            val_loss = validate(model, val_loader, criterion, args)
+            val_loss_list.append(val_loss)
 
-    num_epochs = args.epochs
-    best_val_loss = float('inf')
-    train_loss_list = []
-    val_loss_list = []
-    for epoch in range(num_epochs):
-        train_loss = train(model, train_loader, criterion, optimizer, args)
-        train_loss_list.append(train_loss)
-        val_loss = validate(model, val_loader, criterion, args)
-        val_loss_list.append(val_loss)
+            print(f"Epoch [{epoch + 1}/{num_epochs}]")
+            print(f"Train Loss: {train_loss:.4f}")
+            print(f"Validation Loss: {val_loss:.4f}")
 
-        print(f"Epoch [{epoch + 1}/{num_epochs}]")
-        print(f"Train Loss: {train_loss:.4f}")
-        print(f"Validation Loss: {val_loss:.4f}")
+            # Save the model if it has the best validation loss so far
+            if val_loss < best_val_loss:
+                torch.save(model.state_dict(), "results/best_model.pt")
+                best_val_loss = val_loss
+                print("Saved the model with the best validation loss.")
 
-        # Save the model if it has the best validation loss so far
-        if val_loss < best_val_loss:
-            torch.save(model.state_dict(), "results/best_model.pt")
-            best_val_loss = val_loss
-            print("Saved the model with the best validation loss.")
-
-    # Load the best model for testing
-    model.load_state_dict(torch.load("results/best_model.pt"))
-    data = {'Train loss': train_loss_list, 'Val loss': val_loss_list}
-    with open(f'./results/loss.pickle', 'wb') as file:
-        # Dump the data into the pickle file
-        pickle.dump(data, file)
-    visualization.loss_graph(f'./results/')
+        # Load the best model for testing
+        model.load_state_dict(torch.load("results/best_model.pt"))
+        data = {'Train loss': train_loss_list, 'Val loss': val_loss_list}
+        with open(f'./results/loss.pickle', 'wb') as file:
+            # Dump the data into the pickle file
+            pickle.dump(data, file)
+        visualization.loss_graph(f'./results/')
 
 
     # Evaluate the model on the test set
