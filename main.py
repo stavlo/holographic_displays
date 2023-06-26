@@ -111,7 +111,7 @@ def train(model, train_loader, criterion, optimizer, args):
 
     for batch_idx, images in enumerate(train_loader):
         images = images.to(device)
-        new_img = run_setup(images, args, model)
+        new_img, scale = run_setup(images, args, model)
 
         # loss = 0
         # for c in range(len(args.wave_length)):
@@ -130,7 +130,7 @@ def train(model, train_loader, criterion, optimizer, args):
         train_loss += loss.item()
 
     avg_loss = train_loss / len(train_loader)
-    return avg_loss
+    return avg_loss, scale
 
 
 # Validate the model
@@ -141,7 +141,7 @@ def validate(model, val_loader, criterion, args):
     with torch.no_grad():
         for batch_idx, images in enumerate(val_loader):
             images = images.to(device)
-            new_img = run_setup(images, args, model)
+            new_img, scale = run_setup(images, args, model)
 
             # loss = 0
             # for c in range(len(args.wave_length)):
@@ -157,7 +157,7 @@ def validate(model, val_loader, criterion, args):
             val_loss += loss.item()
 
     avg_loss = val_loss / len(val_loader)
-    return avg_loss
+    return avg_loss, scale
 
 
 # Test the model
@@ -231,7 +231,6 @@ def run_setup(images, args, model):
             dpe_in, amp_max = optics.dpe(cpx_inf)
             phs, s0, s1, s2 = model(dpe_in, torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device))
             scale = torch.cat([s0.view(1), s1.view(1), s2.view(1)])
-            print(f"scale: {scale}")
             real, img = optics.polar_to_rect(torch.ones_like(dpe_in) * (amp_max / 2), phs)
 
         if args.phase_model == 'amp+phs':
@@ -254,7 +253,7 @@ def run_setup(images, args, model):
         cpx_recon = optics.propogation(cpx_slm_filter, args.z, c, forward=True)
         new_img[:, i, :, :] = optics.scale_img(torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2, images[:,i,:,:], scale[i])
         # norm_img[:, i, :, :] = optics.scale_img(new_img[:, i, :, :], images[:, i, :, :])
-    return new_img
+    return new_img, scale
 
 def prep_data(args):
     torch.manual_seed(42)
@@ -317,13 +316,13 @@ def main():
         train_loss_list = []
         val_loss_list = []
         for epoch in range(num_epochs):
-            train_loss = train(model, train_loader, criterion, optimizer, args)
+            train_loss, scale = train(model, train_loader, criterion, optimizer, args)
             train_loss_list.append(train_loss)
-            val_loss = validate(model, val_loader, criterion, args)
+            val_loss, scale = validate(model, val_loader, criterion, args)
             val_loss_list.append(val_loss)
 
             print(f"Epoch [{epoch + 1}/{num_epochs}]")
-            print(f"Train Loss: {train_loss:.4f}")
+            print(f"Train Loss: {train_loss:.4f}, Scale: {scale.cpu().numpy()}")
             print(f"Validation Loss: {val_loss:.4f}")
 
             # Save the model if it has the best validation loss so far
