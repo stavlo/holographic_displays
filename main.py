@@ -17,10 +17,10 @@ from torchmetrics import StructuralSimilarityIndexMeasure
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 parser = argparse.ArgumentParser(description='holografic_slm')
-parser.add_argument('--epochs', default=100, type=int)
+parser.add_argument('--epochs', default=200, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
-parser.add_argument('--lr', default=1e-4, type=float)
+parser.add_argument('--lr', default=1e-3, type=float)
 parser.add_argument('--z', default=0.1, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 parser.add_argument('--check_prop', default=False, type=bool)
@@ -48,18 +48,58 @@ class ImageDataset(Dataset):
 class CNN_DPE(nn.Module):
     def __init__(self):
         super(CNN_DPE, self).__init__()
-        self.conv1 = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
-        self.conv3 = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
         self.LeakyReLU = nn.LeakyReLU()
 
+        self.conv1r = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
+        self.conv2r = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv3r = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv4r = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv5r = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
         # Initialize the convolutional layers with identity
-        self.conv1.weight.data.copy_(Loss_function.conv_identity_filter(3))
-        self.conv1.bias.data.fill_(0)
-        self.conv2.weight.data.copy_(Loss_function.conv_identity_filter(5))
-        self.conv2.bias.data.fill_(0)
-        self.conv3.weight.data.copy_(Loss_function.conv_identity_filter(7))
-        self.conv3.bias.data.fill_(0)
+        self.conv1r.weight.data.copy_(Loss_function.conv_identity_filter(3))
+        self.conv1r.bias.data.fill_(0)
+        self.conv2r.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv2r.bias.data.fill_(0)
+        self.conv3r.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv3r.bias.data.fill_(0)
+        self.conv4r.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv4r.bias.data.fill_(0)
+        self.conv5r.weight.data.copy_(Loss_function.conv_identity_filter(7))
+        self.conv5r.bias.data.fill_(0)
+
+        self.conv1g = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
+        self.conv2g = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv3g = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv4g = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv5g = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
+        # Initialize the convolutional layers with identity
+        self.conv1g.weight.data.copy_(Loss_function.conv_identity_filter(3))
+        self.conv1g.bias.data.fill_(0)
+        self.conv2g.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv2g.bias.data.fill_(0)
+        self.conv3g.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv3g.bias.data.fill_(0)
+        self.conv4g.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv4g.bias.data.fill_(0)
+        self.conv5g.weight.data.copy_(Loss_function.conv_identity_filter(7))
+        self.conv5g.bias.data.fill_(0)
+
+        self.conv1b = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
+        self.conv2b = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv3b = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv4b = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv5b = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
+        # Initialize the convolutional layers with identity
+        self.conv1b.weight.data.copy_(Loss_function.conv_identity_filter(3))
+        self.conv1b.bias.data.fill_(0)
+        self.conv2b.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv2b.bias.data.fill_(0)
+        self.conv3b.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv3b.bias.data.fill_(0)
+        self.conv4b.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv4b.bias.data.fill_(0)
+        self.conv5b.weight.data.copy_(Loss_function.conv_identity_filter(7))
+        self.conv5b.bias.data.fill_(0)
 
         custom_weights = torch.tensor([1.0])
         self.linear1 = nn.Linear(1, 1, bias=False)
@@ -74,14 +114,26 @@ class CNN_DPE(nn.Module):
         # nn.init.xavier_uniform_(self.conv2.weight)
         # nn.init.xavier_uniform_(self.conv3.weight)
 
-    def forward(self, x, s0, s1, s2):
-        x1 = self.LeakyReLU(self.conv1(x))
-        x2 = self.LeakyReLU(self.conv2(x1))
-        x3 = self.LeakyReLU(self.conv3(x2))
+    def forward(self, r, g, b, s0, s1, s2):
+        r1 = self.conv1r(r)
+        r2 = self.conv2r(r1)
+        r3 = self.conv3r(r2)
+        r4 = self.conv3r(r3)
+        r5 = self.conv3r(r4)
+        g1 = self.conv1g(g)
+        g2 = self.conv2g(g1)
+        g3 = self.conv3g(g2)
+        g4 = self.conv3g(g3)
+        g5 = self.conv3g(g4)
+        b1 = self.conv1b(b)
+        b2 = self.conv2b(b1)
+        b3 = self.conv3b(b2)
+        b4 = self.conv3b(b3)
+        b5 = self.conv3b(b4)
         s0 = self.linear1(s0)
         s1 = self.linear2(s1)
         s2 = self.linear3(s2)
-        return x3, s0, s1, s2
+        return r5, g5, b5, s0, s1, s2
 
 # Define the CNN model
 class CNN(nn.Module):
@@ -113,14 +165,14 @@ def train(model, train_loader, criterion, optimizer, args):
         images = images.to(device)
         new_img, scale = run_setup(images, args, model)
 
-        # loss = 0
-        # for c in range(len(args.wave_length)):
-        #     loss += criterion(new_img[:,c,:,:], images[:,c,:,:])
+        loss = 0
+        for c in range(len(args.wave_length)):
+            loss += criterion(new_img[:,c,:,:], images[:,c,:,:])
             # ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
             # loss = criterion(new_img[:, c, :, :], images[:, c, :, :]) + \
             #        1 - ssim(new_img[:, c, :, :].unsqueeze(1), images[:, c, :, :].unsqueeze(1))
         # loss = 1 - ssim(new_img, images)
-        loss = criterion(new_img - torch.mean(new_img, (-1,-2), keepdim=True), images - torch.mean(new_img, (-1,-2), keepdim=True))
+        # loss = criterion(new_img - torch.mean(new_img, (-1,-2), keepdim=True), images - torch.mean(new_img, (-1,-2), keepdim=True))
         # loss += Loss_function.laplacian_loss(new_img,images, criterion)
 
         optimizer.zero_grad()
@@ -168,7 +220,7 @@ def test(model, test_loader, criterion, args):
     with torch.no_grad():
         for batch_idx, images in enumerate(test_loader):
             images = images.to(device)
-            new_img = run_setup(images, args, model)
+            new_img, scale = run_setup(images, args, model)
 
             reproduce_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 1)
             plt.imshow(reproduce_img, cmap='gray')
@@ -223,29 +275,19 @@ def check_prop(test_loader, args):
 def run_setup(images, args, model):
     real_s, img_s = torch.real(images), torch.zeros_like(images)
     new_img = torch.zeros_like(images)
+    dpe_in = torch.zeros_like(images)
+    amp_max = torch.Tensor([0, 0, 0])
     cpx_start = torch.complex(real_s, img_s)
     for i, c in enumerate(args.wave_length):
         cpx_inf = optics.propogation(cpx_start[:, i, :, :].unsqueeze(1), args.z, c, forward=False)
+        dpe_in[:,i,:,:], amp_max[i] = optics.dpe(cpx_inf)
 
-        if args.phase_model == 'DPE':
-            dpe_in, amp_max = optics.dpe(cpx_inf)
-            phs, s0, s1, s2 = model(dpe_in, torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device))
-            scale = torch.cat([s0.view(1), s1.view(1), s2.view(1)])
-            real, img = optics.polar_to_rect(torch.ones_like(dpe_in) * (amp_max / 2), phs)
-
-        if args.phase_model == 'amp+phs':
-            # without DPE use amp and phase information
-            amp, phs = optics.rect_to_polar(torch.real(cpx_inf), torch.imag(cpx_inf))
-            cpx_in = torch.cat([amp, phs], dim=1)
-            phs = model(cpx_in)
-            real, img = optics.polar_to_rect(torch.ones_like(phs) * 0.2, phs)
-
-        if args.phase_model == 'identity':
-            phs_in = torch.ones_like(torch.angle(cpx_inf)) * 0.01
-            phs = model(phs_in)
-            real, img = optics.polar_to_rect(torch.ones_like(phs), phs)
-
-
+    phs_r, phs_g, phs_b, s0, s1, s2 = model(dpe_in[:,0,:,:].unsqueeze(1), dpe_in[:,1,:,:].unsqueeze(1), dpe_in[:,2,:,:].unsqueeze(1),
+                                            torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device))
+    scale = torch.cat([s0.view(1), s1.view(1), s2.view(1)])
+    phs = torch.cat([phs_r, phs_g, phs_b], dim=1)
+    for i, c in enumerate(args.wave_length):
+        real, img = optics.polar_to_rect(torch.ones_like(phs[:,i,:,:].unsqueeze(1)) * (amp_max[i] / 2), phs[:,i,:,:].unsqueeze(1))
         cpx_slm = torch.complex(real, img)
         f_cpx = optics.fftshift(torch.fft.fftn(cpx_slm, dim=(-2, -1), norm='ortho'))
         f_cpx_filter = optics.np_circ_filter(cpx_slm.shape[0], cpx_slm.shape[1], cpx_slm.shape[2], cpx_slm.shape[3]) * f_cpx
@@ -340,6 +382,7 @@ def main():
         visualization.loss_graph(f'./results/')
 
 
+    model.load_state_dict(torch.load("results/best_model.pt"))
     # Evaluate the model on the test set
     test_loss = test(model, test_loader, criterion, args)
     print(f"Test Loss: {test_loss:.4f}")
