@@ -50,11 +50,13 @@ def dpe(cpx):
     # output = torch.angle(cpx_phs)
     return cpx_phs, amp_max
 
+
 def polar_to_rect(mag, ang):
     """Converts the polar complex representation to rectangular"""
     real = mag * torch.cos(ang)
     imag = mag * torch.sin(ang)
     return real, imag
+
 
 def rect_to_polar(real, imag):
     """Converts the rectangular complex representation to polar"""
@@ -87,6 +89,7 @@ def fft2(tensor_re, tensor_im, shift=False):
         tensor_out_im = fftshift(tensor_out_im)
 
     return tensor_out_re, tensor_out_im
+
 
 def ifftshift(tensor):
     """ifftshift for tensors of dimensions [minibatch_size, num_channels, height, width, 2]
@@ -133,6 +136,7 @@ def propogation(cpx_in, z, wave_length, forward=True):
         cpx = ifftshift(torch.fft.fftn(cpx, dim=(-2, -1), norm='ortho'))
     return cpx
 
+
 def prop_mask(cpx_in, z, wave_length):
     # resolution of input field, should be: (num_images, num_channels, height, width, 2)
     field_resolution = cpx_in.size()
@@ -175,6 +179,7 @@ def norm_img_energy(img1, original):
     norm_img = img1 * ratio
     return norm_img
 
-def scale_img(img1, original):
+
+def scale_img(img1, original, net_s):
     s = (img1 * original).mean() / (img1 ** 2).mean()  # scale minimizing MSE btw recon and    return scale
-    return s * img1
+    return s * img1 * net_s
