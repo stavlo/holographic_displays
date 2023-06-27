@@ -21,12 +21,13 @@ parser = argparse.ArgumentParser(description='holografic_slm')
 parser.add_argument('--epochs', default=200, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
-parser.add_argument('--lr', default=1e-3, type=float)
+parser.add_argument('--lr', default=1e-4, type=float)
 parser.add_argument('--z', default=0.1, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 parser.add_argument('--eval', default=False, type=bool)
 parser.add_argument('--phase_model', default='identity', type=str, help='[identity, DPE, amp_phs]')
 parser.add_argument('--model', default='conv', type=str, help='[conv, skip_connection, classic]')
+
 
 class ImageDataset(Dataset):
     def __init__(self, image_path):
@@ -104,15 +105,15 @@ class CNN_DPE_SKIP(nn.Module):
         self.linear3.weight = nn.Parameter(custom_weights)
 
         # Xavier initialization
-        nn.init.xavier_uniform_(self.conv1r.weight, gain=0.01)
-        nn.init.xavier_uniform_(self.conv2r.weight, gain=0.01)
-        nn.init.xavier_uniform_(self.conv3r.weight, gain=0.01)
-        nn.init.xavier_uniform_(self.conv1g.weight, gain=0.01)
-        nn.init.xavier_uniform_(self.conv2g.weight, gain=0.01)
-        nn.init.xavier_uniform_(self.conv3g.weight, gain=0.01)
-        nn.init.xavier_uniform_(self.conv1b.weight, gain=0.01)
-        nn.init.xavier_uniform_(self.conv2b.weight, gain=0.01)
-        nn.init.xavier_uniform_(self.conv3b.weight, gain=0.01)
+        nn.init.xavier_uniform_(self.conv1r.weight)
+        nn.init.xavier_uniform_(self.conv2r.weight)
+        nn.init.xavier_uniform_(self.conv3r.weight)
+        nn.init.xavier_uniform_(self.conv1g.weight)
+        nn.init.xavier_uniform_(self.conv2g.weight)
+        nn.init.xavier_uniform_(self.conv3g.weight)
+        nn.init.xavier_uniform_(self.conv1b.weight)
+        nn.init.xavier_uniform_(self.conv2b.weight)
+        nn.init.xavier_uniform_(self.conv3b.weight)
 
     def forward(self, r, g, b, s0, s1, s2):
         r1 = self.LeakyReLU(self.conv1r(r))
@@ -215,6 +216,7 @@ class CNN_DPE(nn.Module):
         s2 = self.linear3(s2)
         return r5, g5, b5, s0, s1, s2
 
+
 class CNN(nn.Module):
     def __init__(self):
         super(CNN, self).__init__()
@@ -304,7 +306,7 @@ def test(model, test_loader, criterion, args, repo_path):
             reproduce_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 1)
             plt.imshow(reproduce_img, cmap='gray')
             plt.title("DPE " + args.model + " Z = " + str(args.z) + '[m]')
-            plt.show(block=True)
+            # plt.show(block=False)
             cv2.imwrite(repo_path + '/' + args.model + '.png', (cv2.cvtColor(reproduce_img*255, cv2.COLOR_BGR2RGB)))
             loss = criterion(new_img, images)
 
@@ -346,7 +348,7 @@ def check_prop(test_loader, args, repo_path):
             recon_img = np.clip(norm_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 1)
             plt.imshow(recon_img, cmap='gray')
             plt.title("DPE with no network Z = " + str(args.z) + '[m]')
-            plt.show(block=True)
+            # plt.show(block=True)
             cv2.imwrite(repo_path + '/classic.png', (cv2.cvtColor(recon_img*255, cv2.COLOR_BGR2RGB)))
 
 
@@ -367,9 +369,11 @@ def run_setup(images, args, model):
     for i, c in enumerate(args.wave_length):
         real, img = optics.polar_to_rect(torch.ones_like(phs[:,i,:,:].unsqueeze(1)) * (amp_max[i] / 2), phs[:,i,:,:].unsqueeze(1))
         cpx_slm = torch.complex(real, img)
+
         f_cpx = optics.fftshift(torch.fft.fftn(cpx_slm, dim=(-2, -1), norm='ortho'))
         f_cpx_filter = optics.np_circ_filter(cpx_slm.shape[0], cpx_slm.shape[1], cpx_slm.shape[2], cpx_slm.shape[3]) * f_cpx
         cpx_slm_filter = torch.fft.ifftn(optics.ifftshift(f_cpx_filter), dim=(-2, -1), norm='ortho')
+
         cpx_recon = optics.propogation(cpx_slm_filter, args.z, c, forward=True)
         new_img[:, i, :, :] = optics.scale_img(torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2, images[:,i,:,:], scale[i])
         # norm_img[:, i, :, :] = optics.scale_img(new_img[:, i, :, :], images[:, i, :, :])

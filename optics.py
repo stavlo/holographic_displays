@@ -9,7 +9,7 @@ def np_circ_filter(batch, num_channels, res_h, res_w, filter_radius=None):
     """create a circular low pass filter
     """
     if filter_radius == None:
-        filter_radius = int(np.min([res_h, res_w]) / 4)
+        filter_radius = int(np.min([res_h, res_w]) / 2)
     y,x = np.meshgrid(np.linspace(-(res_w-1)/2, (res_w-1)/2, res_w), np.linspace(-(res_h-1)/2, (res_h-1)/2, res_h))
     mask = x**2+y**2 <= filter_radius**2
     np_filter = np.zeros((res_h, res_w))
@@ -132,8 +132,8 @@ def propogation(cpx_in, z, wave_length, forward=True):
     # to source plane
     if not forward:
         prop_phs = prop_mask(cpx_in, -z, wave_length)
-        cpx = torch.fft.ifftn(fftshift(cpx_in), dim=(-2, -1), norm='ortho') * prop_phs
-        cpx = ifftshift(torch.fft.fftn(cpx, dim=(-2, -1), norm='ortho'))
+        cpx = torch.fft.fftn(ifftshift(cpx_in), dim=(-2, -1), norm='ortho') * prop_phs
+        cpx = fftshift(torch.fft.ifftn(cpx, dim=(-2, -1), norm='ortho'))
     return cpx
 
 

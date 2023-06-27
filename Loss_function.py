@@ -77,6 +77,8 @@ def laplacian_loss(img1, img2, criterion):
     H = torch.Tensor([[[[1, 1, 1], [1, -8, 1], [1, 1, 1]]]]).to(device)
     for i in range(img2.shape[1]):
         laplace1 = F.conv2d(img1[:,i,:,:].unsqueeze(1), H, padding=1)
-        laplace2 = F.conv2d(img2[:,i,:,:].unsqueeze(1), H, padding=1)
-        loss += criterion(laplace2, laplace1)
+        mask = torch.abs(laplace1) < 0.5
+        loss += torch.sum(torch.abs(laplace1*mask)) * 0.00001
+        # laplace2 = F.conv2d(img2[:,i,:,:].unsqueeze(1), H, padding=1)
+        # loss += criterion(laplace2, laplace1)
     return loss

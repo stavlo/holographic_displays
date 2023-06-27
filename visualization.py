@@ -20,8 +20,8 @@ def loss_graph(file_path):
     plt.title('Loss')
     plt.grid()
     plt.legend()
-    plt.show(block=True)
-    plt.savefig(f'{file_path}.png')
+    # plt.show(block=False)
+    plt.savefig(f'{file_path}_loss.png')
 
 
 def calculate_accuracy(model, dataloader, device):
