@@ -26,7 +26,7 @@ parser.add_argument('--z', default=0.1, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 parser.add_argument('--eval', default=False, type=bool)
 parser.add_argument('--phase_model', default='identity', type=str, help='[identity, DPE, amp_phs]')
-parser.add_argument('--model', default='conv', type=str, help='[conv, skip_connection, classic]')
+parser.add_argument('--model', default='conv', type=str, help='[conv, skip_connection, classic, amp_phs]')
 
 
 class ImageDataset(Dataset):
@@ -220,21 +220,53 @@ class CNN_DPE(nn.Module):
 class CNN(nn.Module):
     def __init__(self):
         super(CNN, self).__init__()
-        self.conv1 = nn.Conv2d(2, 2, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(2, 1, kernel_size=5, stride=1, padding=2)
-        self.conv3 = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
         self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
+
+        self.conv1r = nn.Conv2d(2, 2, kernel_size=3, stride=1, padding=1)
+        self.conv2r = nn.Conv2d(2, 1, kernel_size=5, stride=1, padding=2)
+        self.conv3r = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
+
+        self.conv1g = nn.Conv2d(2, 2, kernel_size=3, stride=1, padding=1)
+        self.conv2g = nn.Conv2d(2, 1, kernel_size=5, stride=1, padding=2)
+        self.conv3g = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
+
+        self.conv1b = nn.Conv2d(2, 2, kernel_size=3, stride=1, padding=1)
+        self.conv2b = nn.Conv2d(2, 1, kernel_size=5, stride=1, padding=2)
+        self.conv3b = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
 
         # Xavier initialization
-        nn.init.xavier_uniform_(self.conv1.weight)
-        nn.init.xavier_uniform_(self.conv2.weight)
-        nn.init.xavier_uniform_(self.conv3.weight)
+        nn.init.xavier_uniform_(self.conv1r.weight)
+        nn.init.xavier_uniform_(self.conv2r.weight)
+        nn.init.xavier_uniform_(self.conv3r.weight)
+        nn.init.xavier_uniform_(self.conv1g.weight)
+        nn.init.xavier_uniform_(self.conv2g.weight)
+        nn.init.xavier_uniform_(self.conv3g.weight)
+        nn.init.xavier_uniform_(self.conv1b.weight)
+        nn.init.xavier_uniform_(self.conv2b.weight)
+        nn.init.xavier_uniform_(self.conv3b.weight)
+        custom_weights = torch.tensor([1.0])
+        self.linear1 = nn.Linear(1, 1, bias=False)
+        self.linear1.weight = nn.Parameter(custom_weights)
+        self.linear2 = nn.Linear(1, 1, bias=False)
+        self.linear2.weight = nn.Parameter(custom_weights)
+        self.linear3 = nn.Linear(1, 1, bias=False)
+        self.linear3.weight = nn.Parameter(custom_weights)
 
-    def forward(self, x):
-        x = self.relu(self.conv1(x))
-        x = self.relu(self.conv2(x))
-        x = self.conv3(x)
-        return x
+    def forward(self, r, g, b, s0, s1, s2):
+        r1 = self.relu(self.conv1r(r))
+        r2 = self.relu(self.conv2r(r1))
+        r3 = self.tanh(self.conv3r(r2))*torch.pi
+        g1 = self.relu(self.conv1g(g))
+        g2 = self.relu(self.conv2g(g1))
+        g3 = self.tanh(self.conv3g(g2))*torch.pi
+        b1 = self.relu(self.conv1b(b))
+        b2 = self.relu(self.conv2b(b1))
+        b3 = self.tanh(self.conv3b(b2))*torch.pi
+        s0 = self.linear1(s0)
+        s1 = self.linear2(s1)
+        s2 = self.linear3(s2)
+        return r+r3, g+g3, b+b3, s0, s1, s2
 
 
 # Train the model
@@ -345,22 +377,39 @@ def run_setup(images, args, model):
     cpx_start = torch.complex(real_s, img_s)
     for i, c in enumerate(args.wave_length):
         cpx_inf = optics.propogation(cpx_start[:, i, :, :].unsqueeze(1), args.z, c, forward=False)
-        dpe_in[:,i,:,:], amp_max[i] = optics.dpe(cpx_inf)
+        if 'amp_phs' != args.model:
+            dpe_in[:,i,:,:], amp_max[i] = optics.dpe(cpx_inf)
+    if 'amp_phs' != args.model:
+        phs_r, phs_g, phs_b, s0, s1, s2 = model(dpe_in[:,0,:,:].unsqueeze(1), dpe_in[:,1,:,:].unsqueeze(1), dpe_in[:,2,:,:].unsqueeze(1),
+                                                torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device))
+        scale = torch.cat([s0.view(1), s1.view(1), s2.view(1)])
+        phs = torch.cat([phs_r, phs_g, phs_b], dim=1)
+    else:
+        phs_r, phs_g, phs_b, s0, s1, s2 = model(torch.ones_like(images[:,:2,:,:]), torch.ones_like(images[:,:2,:,:]), torch.ones_like(images[:,:2,:,:]),
+                                                torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device),torch.Tensor([1.0]).to(device))
+        scale = torch.cat([s0.view(1), s1.view(1), s2.view(1)])
+        phs = torch.cat([phs_r, phs_g, phs_b], dim=1)
 
-    phs_r, phs_g, phs_b, s0, s1, s2 = model(dpe_in[:,0,:,:].unsqueeze(1), dpe_in[:,1,:,:].unsqueeze(1), dpe_in[:,2,:,:].unsqueeze(1),
-                                            torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device))
-    scale = torch.cat([s0.view(1), s1.view(1), s2.view(1)])
-    phs = torch.cat([phs_r, phs_g, phs_b], dim=1)
     for i, c in enumerate(args.wave_length):
-        real, img = optics.polar_to_rect(torch.ones_like(phs[:,i,:,:].unsqueeze(1)) * (amp_max[i] / 2), phs[:,i,:,:].unsqueeze(1))
+        if 'amp_phs' != args.model:
+            real, img = optics.polar_to_rect(torch.ones_like(phs[:,i,:,:].unsqueeze(1)) * (amp_max[i] / 2), phs[:,i,:,:].unsqueeze(1))
+        else:
+            real, img = optics.polar_to_rect(torch.ones_like(phs[:,i,:,:].unsqueeze(1)) * scale[i], phs[:,i,:,:].unsqueeze(1))
+
         cpx_slm = torch.complex(real, img)
 
-        f_cpx = optics.fftshift(torch.fft.fftn(cpx_slm, dim=(-2, -1), norm='ortho'))
-        f_cpx_filter = optics.np_circ_filter(cpx_slm.shape[0], cpx_slm.shape[1], cpx_slm.shape[2], cpx_slm.shape[3]) * f_cpx
-        cpx_slm_filter = torch.fft.ifftn(optics.ifftshift(f_cpx_filter), dim=(-2, -1), norm='ortho')
+        if 'amp_phs' != args.model:
+            f_cpx = optics.fftshift(torch.fft.fftn(cpx_slm, dim=(-2, -1), norm='ortho'))
+            f_cpx_filter = optics.np_circ_filter(cpx_slm.shape[0], cpx_slm.shape[1], cpx_slm.shape[2], cpx_slm.shape[3]) * f_cpx
+            cpx_slm_filter = torch.fft.ifftn(optics.ifftshift(f_cpx_filter), dim=(-2, -1), norm='ortho')
+        else:
+            cpx_slm_filter = cpx_slm
 
         cpx_recon = optics.propogation(cpx_slm_filter, args.z, c, forward=True)
-        new_img[:, i, :, :] = optics.scale_img(torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2, images[:,i,:,:], scale[i])
+        if 'amp_phs' == args.model:
+            new_img[:, i, :, :] = optics.scale_img(torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2, images[:,i,:,:])
+        else:
+            new_img[:, i, :, :] = optics.scale_img(torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2, images[:,i,:,:], scale[i])
         # norm_img[:, i, :, :] = optics.scale_img(new_img[:, i, :, :], images[:, i, :, :])
     return new_img, scale
 
@@ -411,7 +460,7 @@ def main():
         check_prop(test_loader, args, repo_path)
         return
     # Create an instance of the CNN model
-    if args.phase_model == 'amp+phs':
+    if args.model == 'amp_phs':
         model = CNN().to(device)
     elif args.model == 'conv':
         model = CNN_DPE().to(device)

@@ -181,5 +181,6 @@ def norm_img_energy(img1, original):
 
 
 def scale_img(img1, original, net_s=1):
+    img1 = img1 * net_s
     s = (img1 * original).mean() / (img1 ** 2).mean()  # scale minimizing MSE btw recon and    return scale
-    return s * img1 * net_s
+    return s * img1

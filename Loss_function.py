@@ -50,7 +50,7 @@ def compute_tv_loss(x_in, x_gt, criterion):
 
 
 def histogram_loss():
-    image_path1 = './results/prop_dist_50cm/conv.png'
+    image_path1 = './results/prop_dist_50cm/conv_TV.png'
     image_path2 = './datasets/1.png'
     # Load the image
     image1 = cv2.imread(image_path1)
@@ -88,13 +88,13 @@ def SSIM_loss(img, target):
 def Loss(img, target, criterion):
     loss = 0
     loss += L1_loss_by_color(img, target, criterion)
-    loss += compute_tv_loss(img, target, criterion) * 1e-6
+    loss += compute_tv_loss(img, target, criterion) * 5e-6
     # loss += laplacian_loss(img, target, criterion)
     # loss += SSIM_loss(img, target)
     return loss
 
 if __name__ == "__main__":
-    image_path1 = './results/prop_dist_50cm/conv.png'
+    image_path1 = './results/prop_dist_50cm/conv_TV.png'
     image_path2 = './datasets/1.png'
     # Load the image
     image1 = torch.Tensor(cv2.imread(image_path1)).view(1,3,1080,1920)
