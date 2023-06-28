@@ -50,6 +50,7 @@ class CNN_DPE_SKIP(nn.Module):
     def __init__(self):
         super(CNN_DPE_SKIP, self).__init__()
         self.LeakyReLU = nn.LeakyReLU()
+        self.tanh = nn.Tanh()
 
         self.conv1r = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
         self.conv2r = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
@@ -118,13 +119,13 @@ class CNN_DPE_SKIP(nn.Module):
     def forward(self, r, g, b, s0, s1, s2):
         r1 = self.LeakyReLU(self.conv1r(r))
         r2 = self.LeakyReLU(self.conv2r(r1))
-        r3 = self.LeakyReLU(self.conv3r(r2))
+        r3 = self.tanh(self.conv3r(r2))*torch.pi
         g1 = self.LeakyReLU(self.conv1g(g))
         g2 = self.LeakyReLU(self.conv2g(g1))
-        g3 = self.LeakyReLU(self.conv3g(g2))
+        g3 = self.tanh(self.conv3g(g2))*torch.pi
         b1 = self.LeakyReLU(self.conv1b(b))
         b2 = self.LeakyReLU(self.conv2b(b1))
-        b3 = self.LeakyReLU(self.conv3b(b2))
+        b3 = self.tanh(self.conv3b(b2))*torch.pi
         s0 = self.linear1(s0)
         s1 = self.linear2(s1)
         s2 = self.linear3(s2)
@@ -462,15 +463,21 @@ def main():
     # Create an instance of the CNN model
     if args.model == 'amp_phs':
         model = CNN().to(device)
+        if os.path.isfile(os.path.join(repo_path, args.model + ".pt")):
+            model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))
     elif args.model == 'conv':
         model = CNN_DPE().to(device)
+        if os.path.isfile(os.path.join(repo_path, args.model + ".pt")):
+            model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))
     elif args.model == 'skip_connection':
-        model = CNN_DPE().to(device)
+        model = CNN_DPE_SKIP().to(device)
+        if os.path.isfile(os.path.join(repo_path, args.model + ".pt")):
+            model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))
     else:
         print("NO PHASE MODEL WAS CHOSEN")
         return
     # Define the loss function and optimizer
-    criterion = nn.L1Loss()
+    criterion = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     # Training loop
     if not args.eval:
