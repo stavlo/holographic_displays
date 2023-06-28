@@ -246,16 +246,7 @@ def train(model, train_loader, criterion, optimizer, args):
         images = images.to(device)
         new_img, scale = run_setup(images, args, model)
 
-        loss = 0
-        for c in range(len(args.wave_length)):
-            loss += criterion(new_img[:,c,:,:], images[:,c,:,:])
-            # ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-            # loss = criterion(new_img[:, c, :, :], images[:, c, :, :]) + \
-            #        1 - ssim(new_img[:, c, :, :].unsqueeze(1), images[:, c, :, :].unsqueeze(1))
-        # loss = 1 - ssim(new_img, images)
-        # loss = criterion(new_img - torch.mean(new_img, (-1,-2), keepdim=True), images - torch.mean(new_img, (-1,-2), keepdim=True))
-        # loss += Loss_function.laplacian_loss(new_img,images, criterion)
-        loss += Loss_function.compute_tv_loss(new_img,images, criterion)
+        loss = Loss_function.Loss(new_img, images, criterion)
 
         optimizer.zero_grad()
         loss.backward()
@@ -277,16 +268,9 @@ def validate(model, val_loader, criterion, args):
             images = images.to(device)
             new_img, scale = run_setup(images, args, model)
 
-            # loss = 0
-            # for c in range(len(args.wave_length)):
-            #     loss += criterion(new_img[:, c, :, :], images[:, c, :, :])
-                # ssim = StructuralSimilarityIndexMeasure(data_range=1.0).to(device)
-                # loss = criterion(new_img[:, c, :, :], images[:, c, :, :]) + \
-                #        1 - ssim(new_img[:, c, :, :].unsqueeze(1),images[:, c, :, :].unsqueeze(1))
-            # loss = 1 - ssim(new_img, images)
-            loss = criterion(new_img - torch.mean(new_img, (-1, -2), keepdim=True),
-                             images - torch.mean(new_img, (-1, -2), keepdim=True))
-            # loss += Loss_function.laplacian_loss(new_img, images, criterion)
+            loss = Loss_function.Loss(new_img, images, criterion)
+            # loss = criterion(new_img - torch.mean(new_img, (-1, -2), keepdim=True),
+            #                  images - torch.mean(new_img, (-1, -2), keepdim=True))
 
             val_loss += loss.item()
 
