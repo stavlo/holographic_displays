@@ -255,6 +255,7 @@ def train(model, train_loader, criterion, optimizer, args):
         # loss = 1 - ssim(new_img, images)
         # loss = criterion(new_img - torch.mean(new_img, (-1,-2), keepdim=True), images - torch.mean(new_img, (-1,-2), keepdim=True))
         # loss += Loss_function.laplacian_loss(new_img,images, criterion)
+        loss += Loss_function.compute_tv_loss(new_img,images, criterion)
 
         optimizer.zero_grad()
         loss.backward()

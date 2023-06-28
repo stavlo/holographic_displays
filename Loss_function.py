@@ -5,7 +5,7 @@ import math
 import torch.nn.functional as F
 from PIL import Image
 from torchvision.transforms import ToTensor
-
+import cv2
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -82,3 +82,49 @@ def laplacian_loss(img1, img2, criterion):
         # laplace2 = F.conv2d(img2[:,i,:,:].unsqueeze(1), H, padding=1)
         # loss += criterion(laplace2, laplace1)
     return loss
+
+
+# compute total variation
+def compute_tv_4d(field):
+    dx = field[:, :, 1:] - field[:, :, :-1]
+    dy = field[:, 1:, :] - field[:, :-1, :]
+    return dx, dy
+
+
+# compute total variation loss
+def compute_tv_loss(x_in, x_gt, criterion):
+    loss = 0
+    for i in range(x_in.shape[1]):
+        x_in_dx, x_in_dy = compute_tv_4d(x_in[:,i,:,:])
+        x_out_dx, x_out_dy = compute_tv_4d(x_gt[:,i,:,:])
+        tv_loss = criterion(x_in_dx, x_out_dx) + criterion(x_in_dy, x_out_dy)
+        loss += tv_loss
+    return loss * 10
+
+
+def histogram_loss():
+    image_path1 = './results/prop_dist_50cm/conv.png'
+    image_path2 = './datasets/1.png'
+    # Load the image
+    image1 = cv2.imread(image_path1)
+    image2 = cv2.imread(image_path2)
+
+    histogram = cv2.calcHist([np.abs(image1[:,:,0] - image2[:,:,0])], [0], None, [256], [0, 256])
+    plt.figure()
+    plt.title("Grayscale Histogram")
+    plt.xlabel("Bins")
+    plt.ylabel("Pixel Count")
+    plt.plot(histogram)
+    plt.xlim([0, 256])
+    plt.show()
+
+    cv2.imshow('conv',image1[:,:,0])
+    cv2.waitKey(0)
+
+if __name__ == "__main__":
+    image_path1 = './results/prop_dist_50cm/conv.png'
+    image_path2 = './datasets/1.png'
+    # Load the image
+    image1 = torch.Tensor(cv2.imread(image_path1)).view(1,3,1080,1920)
+    image2 = torch.Tensor(cv2.imread(image_path2)).view(1,3,1080,1920)
+    compute_tv_loss(image1, image2, torch.nn.L1Loss())
