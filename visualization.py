@@ -10,7 +10,7 @@ import pickle
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def loss_graph(file_path):
-    with open(f'{file_path}/loss.pickle', 'rb') as file:
+    with open(file_path + '.pickle', 'rb') as file:
         # Load the data from the pickle file
         data = pickle.load(file)
 
@@ -20,8 +20,8 @@ def loss_graph(file_path):
     plt.title('Loss')
     plt.grid()
     plt.legend()
-    plt.show(block=True)
-    plt.savefig(f'{file_path}/loss_graph.png')
+    # plt.show(block=False)
+    plt.savefig(f'{file_path}_loss.png')
 
 
 def calculate_accuracy(model, dataloader, device):
