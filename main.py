@@ -55,47 +55,14 @@ class CNN_DPE_SKIP(nn.Module):
         self.conv1r = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
         self.conv2r = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
         self.conv3r = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
-        # # Initialize the convolutional layers with identity
-        # self.conv1r.weight.data.copy_(Loss_function.conv_identity_filter(3))
-        # self.conv1r.bias.data.fill_(0)
-        # self.conv2r.weight.data.copy_(Loss_function.conv_identity_filter(5))
-        # self.conv2r.bias.data.fill_(0)
-        # self.conv3r.weight.data.copy_(Loss_function.conv_identity_filter(5))
-        # self.conv3r.bias.data.fill_(0)
-        # self.conv4r.weight.data.copy_(Loss_function.conv_identity_filter(5))
-        # self.conv4r.bias.data.fill_(0)
-        # self.conv5r.weight.data.copy_(Loss_function.conv_identity_filter(7))
-        # self.conv5r.bias.data.fill_(0)
 
         self.conv1g = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
         self.conv2g = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
         self.conv3g = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
-        # # Initialize the convolutional layers with identity
-        # self.conv1g.weight.data.copy_(Loss_function.conv_identity_filter(3))
-        # self.conv1g.bias.data.fill_(0)
-        # self.conv2g.weight.data.copy_(Loss_function.conv_identity_filter(5))
-        # self.conv2g.bias.data.fill_(0)
-        # self.conv3g.weight.data.copy_(Loss_function.conv_identity_filter(5))
-        # self.conv3g.bias.data.fill_(0)
-        # self.conv4g.weight.data.copy_(Loss_function.conv_identity_filter(5))
-        # self.conv4g.bias.data.fill_(0)
-        # self.conv5g.weight.data.copy_(Loss_function.conv_identity_filter(7))
-        # self.conv5g.bias.data.fill_(0)
 
         self.conv1b = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
         self.conv2b = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
         self.conv3b = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
-        # # Initialize the convolutional layers with identity
-        # self.conv1b.weight.data.copy_(Loss_function.conv_identity_filter(3))
-        # self.conv1b.bias.data.fill_(0)
-        # self.conv2b.weight.data.copy_(Loss_function.conv_identity_filter(5))
-        # self.conv2b.bias.data.fill_(0)
-        # self.conv3b.weight.data.copy_(Loss_function.conv_identity_filter(5))
-        # self.conv3b.bias.data.fill_(0)
-        # self.conv4b.weight.data.copy_(Loss_function.conv_identity_filter(5))
-        # self.conv4b.bias.data.fill_(0)
-        # self.conv5b.weight.data.copy_(Loss_function.conv_identity_filter(7))
-        # self.conv5b.bias.data.fill_(0)
 
         custom_weights = torch.tensor([1.0])
         self.linear1 = nn.Linear(1, 1, bias=False)
@@ -139,53 +106,53 @@ class CNN_DPE(nn.Module):
 
         self.conv1r = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
         self.conv2r = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
-        self.conv3r = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv3r = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
         self.conv4r = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
-        self.conv5r = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
+        self.conv5r = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
         # Initialize the convolutional layers with identity
         self.conv1r.weight.data.copy_(Loss_function.conv_identity_filter(3))
         self.conv1r.bias.data.fill_(0)
         self.conv2r.weight.data.copy_(Loss_function.conv_identity_filter(5))
         self.conv2r.bias.data.fill_(0)
-        self.conv3r.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv3r.weight.data.copy_(Loss_function.conv_identity_filter(7))
         self.conv3r.bias.data.fill_(0)
         self.conv4r.weight.data.copy_(Loss_function.conv_identity_filter(5))
         self.conv4r.bias.data.fill_(0)
-        self.conv5r.weight.data.copy_(Loss_function.conv_identity_filter(7))
+        self.conv5r.weight.data.copy_(Loss_function.conv_identity_filter(3))
         self.conv5r.bias.data.fill_(0)
 
         self.conv1g = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
         self.conv2g = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
-        self.conv3g = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv3g = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
         self.conv4g = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
-        self.conv5g = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
+        self.conv5g = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
         # Initialize the convolutional layers with identity
         self.conv1g.weight.data.copy_(Loss_function.conv_identity_filter(3))
         self.conv1g.bias.data.fill_(0)
         self.conv2g.weight.data.copy_(Loss_function.conv_identity_filter(5))
         self.conv2g.bias.data.fill_(0)
-        self.conv3g.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv3g.weight.data.copy_(Loss_function.conv_identity_filter(7))
         self.conv3g.bias.data.fill_(0)
         self.conv4g.weight.data.copy_(Loss_function.conv_identity_filter(5))
         self.conv4g.bias.data.fill_(0)
-        self.conv5g.weight.data.copy_(Loss_function.conv_identity_filter(7))
+        self.conv5g.weight.data.copy_(Loss_function.conv_identity_filter(3))
         self.conv5g.bias.data.fill_(0)
 
         self.conv1b = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
         self.conv2b = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
-        self.conv3b = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
+        self.conv3b = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
         self.conv4b = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
-        self.conv5b = nn.Conv2d(1, 1, kernel_size=7, stride=1, padding=3)
+        self.conv5b = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
         # Initialize the convolutional layers with identity
         self.conv1b.weight.data.copy_(Loss_function.conv_identity_filter(3))
         self.conv1b.bias.data.fill_(0)
         self.conv2b.weight.data.copy_(Loss_function.conv_identity_filter(5))
         self.conv2b.bias.data.fill_(0)
-        self.conv3b.weight.data.copy_(Loss_function.conv_identity_filter(5))
+        self.conv3b.weight.data.copy_(Loss_function.conv_identity_filter(7))
         self.conv3b.bias.data.fill_(0)
         self.conv4b.weight.data.copy_(Loss_function.conv_identity_filter(5))
         self.conv4b.bias.data.fill_(0)
-        self.conv5b.weight.data.copy_(Loss_function.conv_identity_filter(7))
+        self.conv5b.weight.data.copy_(Loss_function.conv_identity_filter(3))
         self.conv5b.bias.data.fill_(0)
 
         custom_weights = torch.tensor([1.0])
@@ -285,7 +252,7 @@ class CNN(nn.Module):
         s0 = self.linear1(s0)
         s1 = self.linear2(s1)
         s2 = self.linear3(s2)
-        return r+r5, g+g5, b+b5, s0, s1, s2
+        return r5, g5, b5, s0, s1, s2
 
 
 # Train the model
@@ -512,18 +479,24 @@ def main():
         for epoch in range(num_epochs):
             train_loss, scale = train(model, train_loader, optimizer, args, epoch)
             train_loss_list.append(train_loss)
-            val_loss, scale = validate(model, val_loader, args, epoch)
-            val_loss_list.append(val_loss)
+            # val_loss, scale = validate(model, val_loader, args, epoch)
+            # val_loss_list.append(val_loss)
 
             print(f"Epoch [{epoch + 1}/{num_epochs}]")
-            print(f"Train Loss: {train_loss:.4f}, Scale: {scale.cpu().numpy()}")
-            print(f"Validation Loss: {val_loss:.4f}")
+            print(f"Train Loss: {train_loss:.4f}")
+            # print(f"Train Loss: {train_loss:.4f}, Scale: {scale.cpu().numpy()}")
+            # print(f"Validation Loss: {val_loss:.4f}")
 
-            # Save the model if it has the best validation loss so far
-            if val_loss < best_val_loss:
+            # Save the model if it has the best train loss so far
+            if train_loss < best_val_loss:
                 torch.save(model.state_dict(), os.path.join(repo_path, args.model + ".pt"))
-                best_val_loss = val_loss
-                print("Saved the model with the best validation loss.")
+                best_val_loss = train_loss
+                print("Saved the model with the best train loss.")
+            # # Save the model if it has the best validation loss so far
+            # if val_loss < best_val_loss:
+            #     torch.save(model.state_dict(), os.path.join(repo_path, args.model + ".pt"))
+            #     best_val_loss = val_loss
+            #     print("Saved the model with the best validation loss.")
 
         # Load the best model for testing
         model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))

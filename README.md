@@ -2,9 +2,10 @@
 
 ## Agenda
 * Project overview
-* Prerequisits
-* Building the Dataset
-* Training & Evaluation
+* Environment Setting
+* Dataset
+* Training
+* Results
 * Credits and References
 
 
@@ -62,7 +63,7 @@ We conducted experiments with different distance and models, each expirement out
 ????????????????????????
 #### Example for an output image:
 ??????????????
-### References
+### Credits and References
 We based our project on the results of the following papers and Github repositories:
 * [Neural 3D Holography] (http://www.computationalimaging.org/publications/neuralholography3d/) (Suyeon Choi, et al. 2021)
 * [Tensor Holography V2] (http://cgh-v2.csail.mit.edu/) (Liang Shi, et al. 2022)
