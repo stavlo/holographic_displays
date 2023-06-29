@@ -7,6 +7,9 @@ from PIL import Image
 from torchvision.transforms import ToTensor
 import cv2
 from torchmetrics import StructuralSimilarityIndexMeasure
+from torchvision import models
+from collections import namedtuple
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -69,7 +72,6 @@ def histogram_loss():
     cv2.waitKey(0)
 
 
-
 def L1_loss_by_color(img, target, criterion):
     loss = 0
     for c in range(3):
@@ -87,11 +89,50 @@ def SSIM_loss(img, target):
 
 def Loss(img, target, criterion):
     loss = 0
-    loss += L1_loss_by_color(img, target, criterion)
-    loss += compute_tv_loss(img, target, criterion) * 5e-6
+    # loss += L1_loss_by_color(img, target, criterion)
+    # loss += compute_tv_loss(img, target, criterion) * 1e-6
     # loss += laplacian_loss(img, target, criterion)
     # loss += SSIM_loss(img, target)
+
+    model_loss = Vgg16().to(device)
+    loss = criterion(model_loss(img), model_loss(target))
     return loss
+
+
+class Vgg16(torch.nn.Module):
+    def __init__(self, requires_grad=False):
+        super(Vgg16, self).__init__()
+        vgg_pretrained_features = models.vgg16(pretrained=True).features
+        self.slice1 = torch.nn.Sequential()
+        self.slice2 = torch.nn.Sequential()
+        self.slice3 = torch.nn.Sequential()
+        self.slice4 = torch.nn.Sequential()
+        for x in range(4):
+            self.slice1.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(4, 9):
+            self.slice2.add_module(str(x), vgg_pretrained_features[x])
+        for x in range(9, 16):
+            self.slice3.add_module(str(x), vgg_pretrained_features[x])
+        # for x in range(16, 23):
+        #     self.slice4.add_module(str(x), vgg_pretrained_features[x])
+        if not requires_grad:
+            for param in self.parameters():
+                param.requires_grad = False
+
+    def forward(self, X):
+        h = self.slice1(X)
+        h_relu1_2 = h
+        h = self.slice2(h)
+        h_relu2_2 = h
+        h = self.slice3(h)
+        h_relu3_3 = h
+        # h = self.slice4(h)
+        # h_relu4_3 = h
+        # vgg_outputs = namedtuple("VggOutputs", ['relu1_2', 'relu2_2', 'relu3_3', 'relu4_3'])
+        # out = vgg_outputs(h_relu1_2, h_relu2_2, h_relu3_3, h_relu4_3)
+        vgg_outputs = namedtuple("VggOutputs", ['relu1_2', 'relu2_2', 'relu3_3'])
+        out = vgg_outputs(h_relu1_2, h_relu2_2, h_relu3_3)
+        return out
 
 if __name__ == "__main__":
     image_path1 = './results/prop_dist_50cm/conv_TV.png'

@@ -119,13 +119,13 @@ class CNN_DPE_SKIP(nn.Module):
     def forward(self, r, g, b, s0, s1, s2):
         r1 = self.LeakyReLU(self.conv1r(r))
         r2 = self.LeakyReLU(self.conv2r(r1))
-        r3 = self.tanh(self.conv3r(r2))*torch.pi
+        r3 = self.LeakyReLU(self.conv3r(r2))
         g1 = self.LeakyReLU(self.conv1g(g))
         g2 = self.LeakyReLU(self.conv2g(g1))
-        g3 = self.tanh(self.conv3g(g2))*torch.pi
+        g3 = self.LeakyReLU(self.conv3g(g2))
         b1 = self.LeakyReLU(self.conv1b(b))
         b2 = self.LeakyReLU(self.conv2b(b1))
-        b3 = self.tanh(self.conv3b(b2))*torch.pi
+        b3 = self.LeakyReLU(self.conv3b(b2))
         s0 = self.linear1(s0)
         s1 = self.linear2(s1)
         s2 = self.linear3(s2)
@@ -465,14 +465,17 @@ def main():
         model = CNN().to(device)
         if os.path.isfile(os.path.join(repo_path, args.model + ".pt")):
             model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))
+            print(f"Load model from {os.path.join(repo_path, args.model + '.pt')}")
     elif args.model == 'conv':
         model = CNN_DPE().to(device)
         if os.path.isfile(os.path.join(repo_path, args.model + ".pt")):
             model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))
+            print(f"Load model from {os.path.join(repo_path, args.model + '.pt')}")
     elif args.model == 'skip_connection':
         model = CNN_DPE_SKIP().to(device)
         if os.path.isfile(os.path.join(repo_path, args.model + ".pt")):
             model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))
+            print(f"Load model from {os.path.join(repo_path, args.model + '.pt')}")
     else:
         print("NO PHASE MODEL WAS CHOSEN")
         return
