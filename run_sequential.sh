@@ -12,13 +12,13 @@ python main.py --epochs 400 --model conv --z 0.05 --lr 5e-4 && \
 python main.py --epochs 400 --model amp_phs --z 0.05 && \
 # chunk 1 z=0.1[m]
 python main.py --model classic --z 0.1 && \
-python main.py --epochs 400 --model skip_connection --z 0.1 && \
+python main.py --epochs 400 --model skip_connection --z 0.1  --lr 5e-3&& \
 python main.py --epochs 400 --model conv --z 0.1 --lr 5e-4 && \
 python main.py --epochs 400 --model amp_phs --z 0.1 && \
 # chunk 1 z=0.25[m]
 python main.py --model classic --z 0.25 && \
 python main.py --epochs 400 --model skip_connection --z 0.25 && \
-python main.py --epochs 400 --model conv --z 0.25 --lr 5e-4 && \
+python main.py --epochs 400 --model conv --z 0.25 --lr 1e-4 && \
 python main.py --epochs 400 --model amp_phs --z 0.25 && \
 # chunk 1 z=0.5[m]
 python main.py --model classic --z 0.5 && \

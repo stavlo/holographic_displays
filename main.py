@@ -9,6 +9,8 @@ from torchvision.datasets import CIFAR10
 from torchvision.transforms import ToTensor
 import cv2
 from PIL import Image
+
+import Unet
 import optics
 import visualization
 import Loss_function
@@ -207,7 +209,7 @@ class CNN(nn.Module):
         self.conv2b = nn.Conv2d(2, 2, kernel_size=5, stride=1, padding=2)
         self.conv3b = nn.Conv2d(2, 1, kernel_size=7, stride=1, padding=3)
         self.conv4b = nn.Conv2d(1, 1, kernel_size=5, stride=1, padding=2)
-        self.conv5b = nn.Conv2d(1, 2, kernel_size=3, stride=1, padding=1)
+        self.conv5b = nn.Conv2d(1, 1, kernel_size=3, stride=1, padding=1)
 
         # Xavier initialization
         nn.init.xavier_uniform_(self.conv1r.weight)
@@ -255,7 +257,33 @@ class CNN(nn.Module):
         return r5, g5, b5, s0, s1, s2
 
 
-# Train the model
+class Unet_rgb(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.Ur = Unet.build_unet()
+        self.Ug = Unet.build_unet()
+        self.Ub = Unet.build_unet()
+
+        custom_weights = torch.tensor([1.0])
+        self.linear1 = nn.Linear(1, 1, bias=False)
+        self.linear1.weight = nn.Parameter(custom_weights)
+        self.linear2 = nn.Linear(1, 1, bias=False)
+        self.linear2.weight = nn.Parameter(custom_weights)
+        self.linear3 = nn.Linear(1, 1, bias=False)
+        self.linear3.weight = nn.Parameter(custom_weights)
+
+    def forward(self, r_img, g_img, b_img, s0, s1, s2):
+        """ Encoder """
+        r_img = nn.functional.pad(r_img, pad=(0,0,4,4), mode='replicate' )
+        g_img = nn.functional.pad(g_img, pad=(0,0,4,4), mode='replicate' )
+        b_img = nn.functional.pad(b_img, pad=(0,0,4,4), mode='replicate' )
+        r = self.Ur(r_img)
+        g = self.e2(g_img)
+        b = self.e3(b_img)
+        s0 = self.linear1(s0)
+        s1 = self.linear2(s1)
+        s2 = self.linear3(s2)
+        return r, g, b, s0, s1, s2
 def train(model, train_loader, optimizer, args, epoch):
     model.train()
     train_loss = 0.0
@@ -450,7 +478,8 @@ def main():
         return
     # Create an instance of the CNN model
     if args.model == 'amp_phs':
-        model = CNN().to(device)
+        # model = CNN().to(device)
+        model = Unet_rgb().to(device)
         if os.path.isfile(os.path.join(repo_path, args.model + ".pt")):
             model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))
             print(f"Load model from {os.path.join(repo_path, args.model + '.pt')}")
