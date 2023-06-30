@@ -9,7 +9,6 @@ from torchvision.datasets import CIFAR10
 from torchvision.transforms import ToTensor
 import cv2
 from PIL import Image
-
 import Unet
 import optics
 import visualization
@@ -19,6 +18,7 @@ import argparse
 from torchmetrics import StructuralSimilarityIndexMeasure
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 parser = argparse.ArgumentParser(description='holografic_slm')
 parser.add_argument('--epochs', default=200, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
@@ -284,6 +284,8 @@ class Unet_rgb(nn.Module):
         s1 = self.linear2(s1)
         s2 = self.linear3(s2)
         return r, g, b, s0, s1, s2
+
+
 def train(model, train_loader, optimizer, args, epoch):
     model.train()
     train_loss = 0.0
