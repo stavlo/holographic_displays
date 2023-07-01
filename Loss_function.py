@@ -94,7 +94,7 @@ def Loss(img, target, epoch, losses):
     criterion = torch.nn.MSELoss()
     if 'TV_loss' in losses:
         loss += L1_loss_by_color(img, target, criterion)
-        loss += compute_tv_loss(img, target, criterion) * 5e-6
+        loss += compute_tv_loss(img, target, criterion) * 5e-7
     if 'L2' in losses:
         loss += L1_loss_by_color(img, target, criterion)
     if 'L1' in losses:
@@ -106,7 +106,7 @@ def Loss(img, target, epoch, losses):
         loss += SSIM_loss(img, target)
     if 'perceptual_loss' in losses:
         model_loss = Vgg16().to(device)
-        loss = criterion(model_loss(img), model_loss(target))
+        loss = criterion(model_loss(img).relu3_3, model_loss(target).relu3_3)
     return loss
 
 

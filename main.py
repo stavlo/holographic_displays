@@ -439,7 +439,7 @@ def prep_data(args):
     # cifar_dataset = CIFAR10(root="./datasets", train=True, download=True, transform=transform)
 
     # Specify the path to the image file
-    image_path = "./datasets/1.png"
+    image_path = "./datasets/4.png"
     # Create an instance of the ImageDataset
     dataset = ImageDataset(image_path)
     # Access the image data from the dataset
