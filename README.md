@@ -49,6 +49,7 @@ python main.py \
 --z, default=0.1, help='[m]'
 --wave_length, default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), help='[m]'
 --eval, default=False
+--overfit, default=True
 --model, default='conv', '[conv, skip_connection, classic, amp_phs]'
 --Loss, default='[TV_loss]', '[TV_loss, L1, L2, perceptual_loss, laplacian_kernel]'
 ```

@@ -5,28 +5,29 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split, Dataset
-from torchvision.datasets import CIFAR10
+from torchvision.datasets import ImageFolder
 from torchvision.transforms import ToTensor
+import matplotlib.pyplot as plt
+import argparse
+from torchmetrics import StructuralSimilarityIndexMeasure
 import cv2
 from PIL import Image
 import Unet
 import optics
 import visualization
 import Loss_function
-import matplotlib.pyplot as plt
-import argparse
-from torchmetrics import StructuralSimilarityIndexMeasure
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser(description='holografic_slm')
 parser.add_argument('--epochs', default=200, type=int)
-parser.add_argument('--batch_size', default=1, type=int)
+parser.add_argument('--batch_size', default=2, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
 parser.add_argument('--lr', default=1e-4, type=float)
 parser.add_argument('--z', default=0.1, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 parser.add_argument('--eval', default=False, type=bool)
+parser.add_argument('--overfit', default=True, type=bool)
 parser.add_argument('--model', default='conv', type=str, help='[conv, skip_connection, classic, amp_phs]')
 parser.add_argument('--loss', default='[TV_loss]', type=str, help='[TV_loss, L1, L2, perceptual_loss, laplacian_kernel, SSIM_loss]')
 
@@ -290,7 +291,7 @@ def train(model, train_loader, optimizer, args, epoch):
     model.train()
     train_loss = 0.0
 
-    for batch_idx, images in enumerate(train_loader):
+    for batch_idx, (images, _) in enumerate(train_loader):
         images = images.to(device)
         new_img, scale = run_setup(images, args, model)
 
@@ -312,7 +313,7 @@ def validate(model, val_loader, args, epoch):
     val_loss = 0.0
 
     with torch.no_grad():
-        for batch_idx, images in enumerate(val_loader):
+        for batch_idx, (images, _) in enumerate(val_loader):
             images = images.to(device)
             new_img, scale = run_setup(images, args, model)
 
@@ -329,7 +330,7 @@ def test(model, test_loader, criterion, args, repo_path):
     test_loss = 0.0
 
     with torch.no_grad():
-        for batch_idx, images in enumerate(test_loader):
+        for batch_idx, (images, _) in enumerate(test_loader):
             images = images.to(device)
             new_img, scale = run_setup(images, args, model)
 
@@ -355,7 +356,7 @@ def check_prop(test_loader, args, repo_path):
             real_s, img_s = torch.real(images), torch.zeros_like(images)
             cpx_start = torch.complex(real_s, img_s)
             for i, c in enumerate(args.wave_length):
-                cpx_inf = optics.propogation(cpx_start[:,i,:,:].unsqueeze(1), args.z, c, forward=False)
+                cpx_inf = optics.propogation(cpx_start[:,i:i+1,:,:], args.z, c, forward=False)
                 dpe_in, amp_max = optics.dpe(cpx_inf)
                 real, img = optics.polar_to_rect(torch.ones_like(dpe_in) * (amp_max/2), dpe_in)
                 cpx_slm = torch.complex(real, img)
@@ -393,9 +394,9 @@ def run_setup(images, args, model):
     for i, c in enumerate(args.wave_length):
         cpx_inf = optics.propogation(cpx_start[:, i, :, :].unsqueeze(1), args.z, c, forward=False)
         if 'amp_phs' != args.model:
-            dpe_in[:,i,:,:], amp_max[i] = optics.dpe(cpx_inf)
+            dpe_in[:,i:i+1,:,:], amp_max[i] = optics.dpe(cpx_inf)
         else:
-            amp_inf[:,i,:,:], phs_inf[:,i,:,:] = optics.rect_to_polar(cpx_inf.real, cpx_inf.imag)
+            amp_inf[:,i:i+1,:,:], phs_inf[:,i:i+1,:,:] = optics.rect_to_polar(cpx_inf.real, cpx_inf.imag)
     if 'amp_phs' != args.model:
         phs_r, phs_g, phs_b, s0, s1, s2 = model(dpe_in[:,0,:,:].unsqueeze(1), dpe_in[:,1,:,:].unsqueeze(1), dpe_in[:,2,:,:].unsqueeze(1),
                                                 torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device), torch.Tensor([1.0]).to(device))
@@ -410,9 +411,9 @@ def run_setup(images, args, model):
 
     for i, c in enumerate(args.wave_length):
         if 'amp_phs' != args.model:
-            real, img = optics.polar_to_rect(torch.ones_like(phs[:,i,:,:].unsqueeze(1)) * (amp_max[i] / 2), phs[:,i,:,:].unsqueeze(1))
+            real, img = optics.polar_to_rect(torch.ones_like(phs[:,i:i+1,:,:]) * (amp_max[i] / 2), phs[:,i:i+1,:,:])
         else:
-            real, img = optics.polar_to_rect(torch.ones_like(phs[:,i,:,:].unsqueeze(1)) * scale[i], phs[:,i,:,:].unsqueeze(1))
+            real, img = optics.polar_to_rect(torch.ones_like(phs[:,i:i+1,:,:]) * scale[i], phs[:,i:i+1,:,:])
 
         cpx_slm = torch.complex(real, img)
 
@@ -425,41 +426,40 @@ def run_setup(images, args, model):
 
         cpx_recon = optics.propogation(cpx_slm_filter, args.z, c, forward=True)
         if 'amp_phs' == args.model:
-            new_img[:, i, :, :] = optics.scale_img(torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2, images[:,i,:,:])
+            new_img[:, i:i+1, :, :] = optics.scale_img(torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2, images[:,i:i+1,:,:])
         else:
-            new_img[:, i, :, :] = optics.scale_img(torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2, images[:,i,:,:], scale[i])
+            new_img[:, i:i+1, :, :] = optics.scale_img(torch.real(cpx_recon) ** 2 + torch.imag(cpx_recon) ** 2, images[:,i:i+1,:,:], scale[i])
         # norm_img[:, i, :, :] = optics.scale_img(new_img[:, i, :, :], images[:, i, :, :])
     return new_img, scale
 
 
 def prep_data(args):
     torch.manual_seed(42)
-    # Load the CIFAR-10 dataset
     transform = ToTensor()
-    # cifar_dataset = CIFAR10(root="./datasets", train=True, download=True, transform=transform)
 
     # Specify the path to the image file
-    image_path = "./datasets/4.png"
-    # Create an instance of the ImageDataset
-    dataset = ImageDataset(image_path)
-    # Access the image data from the dataset
-    # Split the dataset into train, validation, and test sets
-    # train_ratio = 0.7
-    # val_ratio = 0.2
-    # test_ratio = 0.1
-    # total_samples = len(dataset)
-    # train_size = int(train_ratio * total_samples)
-    # val_size = int(val_ratio * total_samples)
-    # test_size = total_samples - train_size - val_size
-    # train_dataset, val_dataset, test_dataset = random_split(
-    #     dataset,
-    #     [train_size, val_size, test_size],
-    #     generator=torch.Generator().manual_seed(42)
-    # )
-    image_data = dataset
-    train_dataset = image_data
-    val_dataset = image_data
-    test_dataset = image_data
+    if args.overfit:
+        folder_path = "./overfit"
+        dataset = ImageFolder(root=folder_path, transform=transform)
+        image_data = dataset
+        train_dataset = image_data
+        val_dataset = image_data
+        test_dataset = image_data
+    else:
+        folder_path = "./datasets"
+        dataset = ImageFolder(root=folder_path, transform=transform)
+        # Split the dataset into train, validation, and test sets
+        train_ratio = 0.6
+        val_ratio = 0.3
+        total_samples = len(dataset)
+        train_size = int(train_ratio * total_samples)
+        val_size = int(val_ratio * total_samples)
+        test_size = total_samples - train_size - val_size
+        train_dataset, val_dataset, test_dataset = random_split(
+            dataset,
+            [train_size, val_size, test_size],
+            generator=torch.Generator().manual_seed(42)
+        )
 
     # Define data loaders
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
