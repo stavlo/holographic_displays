@@ -2,7 +2,6 @@
 
 ## Agenda
 * Project overview
-* Environment Setting
 * Dataset
 * Training
 * Results
@@ -19,12 +18,6 @@ while maintaining a constant amplitude.
 In light of this, our project aims to leverage SLM technology to transform the encoded 
 information in both the amplitude and phase of light into a phase-only representation.
 Our goal is to use deep neural networks to enhance and improve the classical solutions in phase holography.
-
-### Environment Setting
-You can install all necessary packages by running the following command:
-```bash
-pip install -r requirements.txt
-```
 
 ### Dataset
 We tried to encode the next image from Big Buck Bunny movie
