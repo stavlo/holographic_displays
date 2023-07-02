@@ -347,7 +347,7 @@ def test(model, test_loader, criterion, args, repo_path):
 
 def check_prop(test_loader, args, repo_path):
     with torch.no_grad():
-        for batch_idx, images in enumerate(test_loader):
+        for batch_idx, (images, _) in enumerate(test_loader):
             images = images.to(device)
             new_img = torch.zeros_like(images)
             norm_img = torch.zeros_like(images)
