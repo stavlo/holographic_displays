@@ -21,7 +21,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser(description='holografic_slm')
 parser.add_argument('--epochs', default=200, type=int)
-parser.add_argument('--batch_size', default=2, type=int)
+parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
 parser.add_argument('--lr', default=1e-3, type=float)
 parser.add_argument('--z', default=0.1, type=float, help='[m]')
@@ -42,8 +42,6 @@ class ImageDataset(Dataset):
 
     def __getitem__(self, index):
         image = Image.open(self.image_path).convert('RGB')
-        # image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2GRAY)
-        # image = Image.open(self.image_path)
         tensor_image = self.transform(image)
 
         return tensor_image
@@ -278,9 +276,9 @@ class Unet_rgb(nn.Module):
         r_img = nn.functional.pad(r_img, pad=(0,0,4,4), mode='replicate' )
         g_img = nn.functional.pad(g_img, pad=(0,0,4,4), mode='replicate' )
         b_img = nn.functional.pad(b_img, pad=(0,0,4,4), mode='replicate' )
-        r = self.Ur(r_img)
-        g = self.e2(g_img)
-        b = self.e3(b_img)
+        r = self.Ur(r_img)[:,:,4:-4,:]
+        g = self.Ug(g_img)[:,:,4:-4,:]
+        b = self.Ub(b_img)[:,:,4:-4,:]
         s0 = self.linear1(s0)
         s1 = self.linear2(s1)
         s2 = self.linear3(s2)
