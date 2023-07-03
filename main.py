@@ -23,13 +23,13 @@ parser = argparse.ArgumentParser(description='holografic_slm')
 parser.add_argument('--epochs', default=200, type=int)
 parser.add_argument('--batch_size', default=2, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
-parser.add_argument('--lr', default=1e-4, type=float)
+parser.add_argument('--lr', default=1e-3, type=float)
 parser.add_argument('--z', default=0.1, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 parser.add_argument('--eval', default=False, type=bool)
-parser.add_argument('--overfit', default=True, type=bool)
+parser.add_argument('--overfit', default=False, type=bool)
 parser.add_argument('--model', default='conv', type=str, help='[conv, skip_connection, classic, amp_phs]')
-parser.add_argument('--loss', default='[TV_loss]', type=str, help='[TV_loss, L1, L2, perceptual_loss, laplacian_kernel, SSIM_loss]')
+parser.add_argument('--loss', default=['TV_loss'], type=str, help='[TV_loss, L1, L2, perceptual_loss, laplacian_kernel, SSIM_loss]')
 
 
 class ImageDataset(Dataset):
@@ -349,7 +349,7 @@ def test(model, test_loader, criterion, args, repo_path):
 
 def check_prop(test_loader, args, repo_path):
     with torch.no_grad():
-        for batch_idx, images in enumerate(test_loader):
+        for batch_idx, (images, _) in enumerate(test_loader):
             images = images.to(device)
             new_img = torch.zeros_like(images)
             norm_img = torch.zeros_like(images)
