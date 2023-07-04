@@ -21,13 +21,14 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser(description='holografic_slm')
 parser.add_argument('--epochs', default=200, type=int)
-parser.add_argument('--batch_size', default=1, type=int)
+parser.add_argument('--batch_size', default=2, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
 parser.add_argument('--lr', default=1e-3, type=float)
+parser.add_argument('--filter_size', default=2, type=float)
 parser.add_argument('--z', default=0.1, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 parser.add_argument('--eval', default=False, type=bool)
-parser.add_argument('--overfit', default=False, type=bool)
+parser.add_argument('--overfit', default=True, type=bool)
 parser.add_argument('--model', default='conv', type=str, help='[conv, skip_connection, classic, amp_phs]')
 parser.add_argument('--loss', default=['TV_loss'], type=str, help='[TV_loss, L1, L2, perceptual_loss, laplacian_kernel, SSIM_loss]')
 
@@ -336,7 +337,7 @@ def test(model, test_loader, criterion, args, repo_path):
             plt.imshow(reproduce_img, cmap='gray')
             plt.title("DPE " + args.model + " Z = " + str(args.z) + '[m]')
             # plt.show(block=False)
-            cv2.imwrite(repo_path + '/' + args.model + '.png', (cv2.cvtColor(reproduce_img*255, cv2.COLOR_BGR2RGB)))
+            cv2.imwrite(repo_path + '/' + args.model + "_filter_" + str(args.filter_size*10).split(".")[0] + '.png', (cv2.cvtColor(reproduce_img*255, cv2.COLOR_BGR2RGB)))
             loss = criterion(new_img, images)
 
             test_loss += loss.item()
@@ -415,9 +416,10 @@ def run_setup(images, args, model):
 
         cpx_slm = torch.complex(real, img)
 
-        if 'amp_phs' != args.model:
+        if 'amp_phs' != args.model and args.filter_size:
             f_cpx = optics.fftshift(torch.fft.fftn(cpx_slm, dim=(-2, -1), norm='ortho'))
-            f_cpx_filter = optics.np_circ_filter(cpx_slm.shape[0], cpx_slm.shape[1], cpx_slm.shape[2], cpx_slm.shape[3]) * f_cpx
+            f_cpx_filter = optics.np_circ_filter(cpx_slm.shape[0], cpx_slm.shape[1], cpx_slm.shape[2], cpx_slm.shape[3],
+                                                 filter_radius=int(np.min([cpx_slm.shape[2], cpx_slm.shape[3]]) / args.filter_size)) * f_cpx
             cpx_slm_filter = torch.fft.ifftn(optics.ifftshift(f_cpx_filter), dim=(-2, -1), norm='ortho')
         else:
             cpx_slm_filter = cpx_slm
@@ -480,19 +482,19 @@ def main():
     if args.model == 'amp_phs':
         # model = CNN().to(device)
         model = Unet_rgb().to(device)
-        if os.path.isfile(os.path.join(repo_path, args.model + ".pt")):
-            model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))
-            print(f"Load model from {os.path.join(repo_path, args.model + '.pt')}")
+        if os.path.isfile(os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split(".")[0] + ".pt")):
+            model.load_state_dict(torch.load(os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split(".")[0] + ".pt")))
+            print(f"Load model from {os.path.join(repo_path, args.model + '_filter_' + str(args.filter_size*10).split('.')[0] + '.pt')}")
     elif args.model == 'conv':
         model = CNN_DPE().to(device)
-        if os.path.isfile(os.path.join(repo_path, args.model + ".pt")):
-            model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))
-            print(f"Load model from {os.path.join(repo_path, args.model + '.pt')}")
+        if os.path.isfile(os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split(".")[0] + ".pt")):
+            model.load_state_dict(torch.load(os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split(".")[0] + ".pt")))
+            print(f"Load model from {os.path.join(repo_path, args.model + '_filter_' + str(args.filter_size*10).split('.')[0] + '.pt')}")
     elif args.model == 'skip_connection':
         model = CNN_DPE_SKIP().to(device)
-        if os.path.isfile(os.path.join(repo_path, args.model + ".pt")):
-            model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))
-            print(f"Load model from {os.path.join(repo_path, args.model + '.pt')}")
+        if os.path.isfile(os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split(".")[0] + ".pt")):
+            model.load_state_dict(torch.load(os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split(".")[0] + ".pt")))
+            print(f"Load model from {os.path.join(repo_path, args.model + '_filter_' + str(args.filter_size*10).split('.')[0] + '.pt')}")
     else:
         print("NO PHASE MODEL WAS CHOSEN")
         return
@@ -518,7 +520,7 @@ def main():
 
             # Save the model if it has the best train loss so far
             if train_loss < best_val_loss:
-                torch.save(model.state_dict(), os.path.join(repo_path, args.model + ".pt"))
+                torch.save(model.state_dict(), os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split('.')[0] + ".pt"))
                 best_val_loss = train_loss
                 print("Saved the model with the best train loss.")
             # # Save the model if it has the best validation loss so far
@@ -528,15 +530,15 @@ def main():
             #     print("Saved the model with the best validation loss.")
 
         # Load the best model for testing
-        model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))
+        model.load_state_dict(torch.load(os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split('.')[0] + ".pt")))
         data = {'Train loss': train_loss_list, 'Val loss': val_loss_list}
-        with open(f'{os.path.join(repo_path, args.model)}.pickle', 'wb') as file:
+        with open(f'{os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split(".")[0])}.pickle', 'wb') as file:
             # Dump the data into the pickle file
             pickle.dump(data, file)
-        visualization.loss_graph(f'{os.path.join(repo_path, args.model)}')
+        visualization.loss_graph(f'{os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split(".")[0])}')
 
 
-    model.load_state_dict(torch.load(os.path.join(repo_path, args.model + ".pt")))
+    model.load_state_dict(torch.load(os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split(".")[0] + ".pt")))
     # Evaluate the model on the test set
     test_loss = test(model, test_loader, criterion, args, repo_path)
     print(f"Test L2 Loss: {test_loss:.4f}")
