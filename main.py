@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split, Dataset
 from torchvision.datasets import ImageFolder
+from torchvision.transforms import transforms
 from torchvision.transforms import ToTensor
 import matplotlib.pyplot as plt
 import argparse
@@ -21,15 +22,15 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser(description='holografic_slm')
 parser.add_argument('--epochs', default=200, type=int)
-parser.add_argument('--batch_size', default=2, type=int)
+parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
 parser.add_argument('--lr', default=1e-3, type=float)
 parser.add_argument('--filter_size', default=2, type=float)
-parser.add_argument('--z', default=0.1, type=float, help='[m]')
+parser.add_argument('--z', default=0.5, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 parser.add_argument('--eval', default=False, type=bool)
 parser.add_argument('--overfit', default=True, type=bool)
-parser.add_argument('--model', default='conv', type=str, help='[conv, skip_connection, classic, amp_phs]')
+parser.add_argument('--model', default='skip_connection', type=str, help='[conv, skip_connection, classic, amp_phs]')
 parser.add_argument('--loss', default=['TV_loss'], type=str, help='[TV_loss, L1, L2, perceptual_loss, laplacian_kernel, SSIM_loss]')
 
 
@@ -88,13 +89,13 @@ class CNN_DPE_SKIP(nn.Module):
     def forward(self, r, g, b, s0, s1, s2):
         r1 = self.LeakyReLU(self.conv1r(r))
         r2 = self.LeakyReLU(self.conv2r(r1))
-        r3 = self.tanh(self.conv3r(r2))
+        r3 = self.tanh(self.conv3r(r2))*torch.pi
         g1 = self.LeakyReLU(self.conv1g(g))
         g2 = self.LeakyReLU(self.conv2g(g1))
-        g3 = self.tanh(self.conv3g(g2))
+        g3 = self.tanh(self.conv3g(g2))*torch.pi
         b1 = self.LeakyReLU(self.conv1b(b))
         b2 = self.LeakyReLU(self.conv2b(b1))
-        b3 = self.tanh(self.conv3b(b2))
+        b3 = self.tanh(self.conv3b(b2))*torch.pi
         s0 = self.linear1(s0)
         s1 = self.linear2(s1)
         s2 = self.linear3(s2)
@@ -435,8 +436,10 @@ def run_setup(images, args, model):
 
 def prep_data(args):
     torch.manual_seed(42)
-    transform = ToTensor()
-
+    transform = transforms.Compose([
+        transforms.ToTensor()
+    ])
+        # transforms.Resize((384,384)),
     # Specify the path to the image file
     if args.overfit:
         folder_path = "./overfit"
@@ -515,6 +518,7 @@ def main():
 
             print(f"Epoch [{epoch + 1}/{num_epochs}]")
             print(f"Train Loss: {train_loss:.4f}")
+            print(f" Scale: {scale}")
             # print(f"Train Loss: {train_loss:.4f}, Scale: {scale.cpu().numpy()}")
             # print(f"Validation Loss: {val_loss:.4f}")
 
