@@ -21,15 +21,15 @@ import Loss_function
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser(description='holografic_slm')
-parser.add_argument('--epochs', default=200, type=int)
+parser.add_argument('--epochs', default=10, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
 parser.add_argument('--lr', default=1e-3, type=float)
-parser.add_argument('--filter_size', default=2, type=float)
+parser.add_argument('--filter_size', default=0, type=float)
 parser.add_argument('--z', default=0.5, type=float, help='[m]')
 parser.add_argument('--wave_length', default=np.asfarray([638 * 1e-9, 520 * 1e-9, 450 * 1e-9]), type=float, help='[m]')
 parser.add_argument('--eval', default=False, type=bool)
-parser.add_argument('--overfit', default=True, type=bool)
+parser.add_argument('--overfit', default=False, type=bool)
 parser.add_argument('--model', default='skip_connection', type=str, help='[conv, skip_connection, classic, amp_phs]')
 parser.add_argument('--loss', default=['TV_loss'], type=str, help='[TV_loss, L1, L2, perceptual_loss, laplacian_kernel, SSIM_loss]')
 
@@ -334,14 +334,14 @@ def test(model, test_loader, criterion, args, repo_path):
             images = images.to(device)
             new_img, scale = run_setup(images, args, model)
 
-            reproduce_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 1)
-            plt.imshow(reproduce_img, cmap='gray')
-            plt.title("DPE " + args.model + " Z = " + str(args.z) + '[m]')
-            # plt.show(block=False)
-            cv2.imwrite(repo_path + '/' + args.model + "_filter_" + str(args.filter_size*10).split(".")[0] + '.png', (cv2.cvtColor(reproduce_img*255, cv2.COLOR_BGR2RGB)))
             loss = criterion(new_img, images)
-
             test_loss += loss.item()
+
+        reproduce_img = np.clip(new_img.cpu().numpy()[0].transpose(1, 2, 0), 0, 1)
+        plt.imshow(reproduce_img, cmap='gray')
+        plt.title("DPE " + args.model + " Z = " + str(args.z) + '[m]')
+        # plt.show(block=False)
+        cv2.imwrite(repo_path + '/' + args.model + "_filter_" + str(args.filter_size*10).split(".")[0] + '.png', (cv2.cvtColor(reproduce_img*255, cv2.COLOR_BGR2RGB)))
 
     avg_loss = test_loss / len(test_loader)
     return avg_loss
@@ -511,27 +511,26 @@ def main():
         train_loss_list = []
         val_loss_list = []
         for epoch in range(num_epochs):
-            train_loss, scale = train(model, train_loader, optimizer, args, epoch)
+            train_loss, _ = train(model, train_loader, optimizer, args, epoch)
             train_loss_list.append(train_loss)
-            # val_loss, scale = validate(model, val_loader, args, epoch)
-            # val_loss_list.append(val_loss)
+            val_loss, scale = validate(model, val_loader, args, epoch)
+            val_loss_list.append(val_loss)
 
             print(f"Epoch [{epoch + 1}/{num_epochs}]")
             print(f"Train Loss: {train_loss:.4f}")
-            print(f" Scale: {scale}")
-            # print(f"Train Loss: {train_loss:.4f}, Scale: {scale.cpu().numpy()}")
-            # print(f"Validation Loss: {val_loss:.4f}")
+            print(f"Validation Loss: {val_loss:.4f}, Scale: {scale}")
 
-            # Save the model if it has the best train loss so far
-            if train_loss < best_val_loss:
-                torch.save(model.state_dict(), os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split('.')[0] + ".pt"))
-                best_val_loss = train_loss
-                print("Saved the model with the best train loss.")
-            # # Save the model if it has the best validation loss so far
-            # if val_loss < best_val_loss:
-            #     torch.save(model.state_dict(), os.path.join(repo_path, args.model + ".pt"))
-            #     best_val_loss = val_loss
-            #     print("Saved the model with the best validation loss.")
+            # # Save the model if it has the best train loss so far
+            # if train_loss < best_val_loss:
+            #     torch.save(model.state_dict(), os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split('.')[0] + ".pt"))
+            #     best_val_loss = train_loss
+            #     print("Saved the model with the best train loss.")
+            # Save the model if it has the best validation loss so far
+            if val_loss < best_val_loss:
+                torch.save(model.state_dict(), os.path.join(repo_path,
+                                                            args.model + "_filter_" + str(args.filter_size*10).split('.')[0] + ".pt"))
+                best_val_loss = val_loss
+                print("Saved the model with the best validation loss.")
 
         # Load the best model for testing
         model.load_state_dict(torch.load(os.path.join(repo_path, args.model + "_filter_" + str(args.filter_size*10).split('.')[0] + ".pt")))
