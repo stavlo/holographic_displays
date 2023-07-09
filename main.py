@@ -21,7 +21,7 @@ import Loss_function
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 parser = argparse.ArgumentParser(description='holografic_slm')
-parser.add_argument('--epochs', default=10, type=int)
+parser.add_argument('--epochs', default=100, type=int)
 parser.add_argument('--batch_size', default=1, type=int)
 parser.add_argument('--optimizer', default="adam", type=str)
 parser.add_argument('--lr', default=1e-3, type=float)
@@ -300,6 +300,7 @@ def train(model, train_loader, optimizer, args, epoch):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        print(f"Train Loss in step {batch_idx}: {loss:.4f}, Scale: {scale}")
 
         train_loss += loss.item()
 
@@ -437,9 +438,9 @@ def run_setup(images, args, model):
 def prep_data(args):
     torch.manual_seed(42)
     transform = transforms.Compose([
+        transforms.Resize((384,384)),
         transforms.ToTensor()
     ])
-        # transforms.Resize((384,384)),
     # Specify the path to the image file
     if args.overfit:
         folder_path = "./overfit"
@@ -449,11 +450,11 @@ def prep_data(args):
         val_dataset = image_data
         test_dataset = image_data
     else:
-        folder_path = "./datasets"
+        folder_path = "./datasets/paper"
         dataset = ImageFolder(root=folder_path, transform=transform)
         # Split the dataset into train, validation, and test sets
-        train_ratio = 0.6
-        val_ratio = 0.3
+        train_ratio = 0.8
+        val_ratio = 0.1
         total_samples = len(dataset)
         train_size = int(train_ratio * total_samples)
         val_size = int(val_ratio * total_samples)
