@@ -58,10 +58,6 @@ We conducted experiments with different distance and models, each expirement out
 * Output image
 * Set of weight for the best loss
 
-#### Example for overfit image without filter from 0.5[m]:
-![image](https://drive.google.com/drive/folders/1dY9ovf49ipRQHpXmVu0IiC0cj5q_tDic)
-#### Example for an output image without filter afetr full train from 0.5[m]:
-??????????????
 ### Credits and References
 We based our project on the results of the following papers and Github repositories:
 * [Neural 3D Holography] (http://www.computationalimaging.org/publications/neuralholography3d/) (Suyeon Choi, et al. 2021)
